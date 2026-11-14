@@ -196,10 +196,16 @@ export async function pullIfChanged(): Promise<StudioData | null> {
 /** Отправить контент студии на сервер (только админ) */
 export async function pushData(data: StudioData): Promise<number | null> {
   markPending(true);
-  const { updatedAt } = await api.saveData(data);
-  localStorage.setItem(LOCAL_VERSION_KEY, String(updatedAt));
-  markPending(false);
-  return updatedAt;
+  try {
+    const { updatedAt } = await api.saveData(data);
+    localStorage.setItem(LOCAL_VERSION_KEY, String(updatedAt));
+    markPending(false);
+    return updatedAt;
+  } catch (err) {
+    // Связи нет — правка остаётся в браузере с меткой «не отправлено»
+    // и уходит сама при следующей попытке.
+    throw err;
+  }
 }
 
 /** Проверка связи с сервером (для индикатора и панели админки) */

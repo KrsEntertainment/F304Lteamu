@@ -88,6 +88,12 @@ try {
     (await putData(payload([]), "https://evil.example")).status === 403
   );
 
+  // браузер всегда присылает Origin своего сайта — этот случай и есть рабочий
+  ok(
+    "запись со своего домена проходит",
+    (await putData(payload(["Проект A", "Проект B"]), BASE)).status === 200
+  );
+
   const afterWrite = await getData();
   ok(
     "правка видна другому устройству",
