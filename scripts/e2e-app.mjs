@@ -4,7 +4,7 @@
 // Что делает:
 //   1. поднимает настоящий сервер (main.ts, Deno KV) на временной базе;
 //   2. открывает сборку в jsdom как обычный посетитель;
-//   3. вводит PIN в админке (как это делает человек) и меняет каталог;
+//   3. меняет каталог так же, как это делает админка (без всякого входа);
 //   4. ждёт автоотправку и проверяет базу на сервере;
 //   5. открывает «второе устройство» с пустым localStorage и убеждается,
 //      что оно видит ту же правку, а после перезагрузки сервера — тоже;
@@ -20,7 +20,6 @@ import { JSDOM } from "jsdom";
 const DENO = process.env.DENO_BIN || "deno";
 const PORT = 8798;
 const BASE = `http://127.0.0.1:${PORT}`;
-const PIN = "9086";
 
 const html = readFileSync("dist/index.html", "utf8");
 const inline = [...html.matchAll(/<script[^>]*type="module"[^>]*>([\s\S]*?)<\/script>/g)].map(
@@ -130,8 +129,7 @@ try {
   await sleep(2500);
   ok("сайт отрисовался", admin.w.document.getElementById("root").children.length > 0);
 
-  // вход в админку: PIN — это и ключ записи на сервере
-  admin.w.localStorage.setItem("f304lteam_admin_token_v1", PIN);
+  // никакого входа не нужно: сайт пишет в базу сам
 
   // «правка в админке»: сохраняем изменённый каталог так же, как это делает App
   // берём настоящий проект из общего состояния и меняем только заголовок —
@@ -144,10 +142,10 @@ try {
   };
   const res = await fetch(`${BASE}/api/data`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${PIN}` },
+    headers: { "Content-Type": "application/json", Origin: BASE },
     body: JSON.stringify(edited),
   });
-  ok("правка админа принята сервером", res.ok, `HTTP ${res.status}`);
+  ok("правка админа принята сервером без входа", res.ok, `HTTP ${res.status}`);
 
   // ---------------- второе устройство
   const viewer = openDevice();

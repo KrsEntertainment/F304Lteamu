@@ -1,6 +1,6 @@
 // Сквозная проверка главного требования:
-//   правка из «админки» уходит на сервер, переживает перезапуск и видна
-//   другому устройству (другому клиенту без локального кеша).
+//   правка из «админки» уходит на сервер без всякого входа, переживает
+//   перезапуск и видна другому устройству.
 //
 // Запуск: node scripts/e2e-server.mjs   (нужен установленный deno)
 // Проверяется на локальном Deno KV сервере (main.ts), без внешней сети.
@@ -12,7 +12,6 @@ import { join } from "node:path";
 const DENO = process.env.DENO_BIN || "deno";
 const PORT = 8799;
 const BASE = `http://127.0.0.1:${PORT}`;
-const PIN = "9086";
 
 const kvDir = mkdtempSync(join(tmpdir(), "f304-kv-"));
 const results = [];
@@ -54,10 +53,10 @@ async function waitReady(timeoutMs = 25_000) {
   return false;
 }
 
-async function putData(data, pin = PIN) {
+async function putData(data, origin = BASE) {
   const res = await fetch(`${BASE}/api/data`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${pin}` },
+    headers: { "Content-Type": "application/json", Origin: origin },
     body: JSON.stringify(data),
   });
   return { status: res.status, body: await res.json().catch(() => null) };
@@ -82,9 +81,12 @@ try {
   ok("сервер стартует", await waitReady());
 
   const first = await putData(payload(["Проект A", "Проект B"]));
-  ok("запись с PIN принимается", first.status === 200, `HTTP ${first.status}`);
+  ok("правка из админки принимается без входа", first.status === 200, `HTTP ${first.status}`);
 
-  ok("неверный PIN отклоняется", (await putData(payload([]), "0000")).status === 401);
+  ok(
+    "запись с чужого сайта отклоняется",
+    (await putData(payload([]), "https://evil.example")).status === 403
+  );
 
   const afterWrite = await getData();
   ok(

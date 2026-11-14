@@ -3,10 +3,9 @@
 // Файл уезжает на общий сервер (POST /api/upload) и возвращается как
 // /uploads/<имя> — такую ссылку видят все устройства.
 // Если сервер недоступен, файл временно кладётся в IndexedDB этого браузера
-// (idb://...): правка не теряется, но другие устройства увидят её только
-// после успешной загрузки на сервер.
-import { api, getAdminToken, resolveServerUrl } from "./api";
-import { getGhToken, hasGithubWrite, uploadMediaToGithub } from "./githubStore";
+// (idb://...): правка не теряется и уедет на сервер вместе со следующей
+// успешной отправкой.
+import { api, resolveServerUrl } from "./api";
 
 const DB_NAME = "f304lteam_media_db";
 const STORE_NAME = "media_blobs";
@@ -38,9 +37,9 @@ export function isIdbRef(url?: string): boolean {
   return Boolean(url && url.startsWith("idb://"));
 }
 
-/** Есть ли куда загружать файлы (общий сервер + вход в админку) */
+/** Загружать файлы можно всегда: сервер свой, вход не нужен */
 export function canUploadToServer(): boolean {
-  return Boolean(getAdminToken()) || hasGithubWrite();
+  return true;
 }
 
 /**
@@ -51,23 +50,11 @@ export async function saveGalleryFile(
   file: File,
   onProgress?: UploadProgress
 ): Promise<string> {
-  if (getAdminToken()) {
-    try {
-      const result = await api.uploadFile(file, onProgress);
-      return result.url; // /uploads/<файл> — общий для всех устройств
-    } catch (err) {
-      console.warn("Загрузка на сервер не удалась, пробую резервный путь:", err);
-    }
-  }
-
-  // Резервный путь: файл уходит в репозиторий (если доступ уже настроен)
-  if (getGhToken()) {
-    try {
-      const result = await uploadMediaToGithub(file, onProgress);
-      return result.ref;
-    } catch (err) {
-      console.warn("Резервная загрузка не удалась, сохраняю локально:", err);
-    }
+  try {
+    const result = await api.uploadFile(file, onProgress);
+    return result.url; // /uploads/<файл> — общий для всех устройств
+  } catch (err) {
+    console.warn("Загрузка на сервер не удалась, сохраняю локально:", err);
   }
 
   const id = `media_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;

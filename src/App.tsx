@@ -235,7 +235,7 @@ export default function App() {
     pushTimerRef.current = window.setTimeout(async () => {
       if (!canWriteRemote()) {
         setSaveState('unsaved');
-        notify('Правки сохранены на устройстве. Войдите в админку по PIN — и они уйдут в общую базу');
+        notify('Правки сохранены на устройстве и уйдут в общую базу, как только появится связь');
         return;
       }
       try {

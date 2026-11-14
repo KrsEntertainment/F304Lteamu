@@ -21,14 +21,13 @@ type Status = 'checking' | 'ok' | 'fail';
 
 /**
  * Панель общей базы. Никаких токенов, режимов и адресов:
- * адрес сервера известен сборке, право записи даёт PIN, который админ уже ввёл.
+ * адрес и права записи известны сборке — настраивать нечего.
  * Здесь только показывается честный статус и кнопка «Отправить сейчас».
  */
 export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({ data, onPulled }) => {
   const [status, setStatus] = useState<Status>('checking');
   const [updatedAt, setUpdatedAt] = useState<number>(0);
   const [storage, setStorage] = useState<string>('');
-  const [backend, setBackend] = useState<string>('');
   const [persistent, setPersistent] = useState<boolean>(true);
   const [pending, setPending] = useState<boolean>(hasPending());
   const [sending, setSending] = useState(false);
@@ -41,7 +40,6 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({ data, onPulled
       setStatus('ok');
       setUpdatedAt(res.updatedAt || 0);
       setStorage(res.storage || '');
-      setBackend(res.backend || '');
       setPersistent(res.storage ? res.storage === 'deno-kv' : true);
     } else {
       setStatus('fail');
@@ -110,7 +108,7 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({ data, onPulled
             </p>
             <p className="mt-1 text-xs text-zinc-400">
               {status === 'ok'
-                ? `${backend === 'github' ? 'Резервный канал записи. ' : ''}Данные обновлены: ${dateLabel}. Правки сразу видны на всех устройствах.`
+                ? `Данные обновлены: ${dateLabel}. Правки сразу видны на всех устройствах.`
                 : status === 'fail'
                   ? 'Правки сохраняются в этом браузере и уйдут сами, как только связь вернётся.'
                   : 'Определяю адрес сервера автоматически.'}
@@ -182,7 +180,7 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({ data, onPulled
           <li>· Данные лежат в одном общем хранилище, а не в браузере.</li>
           <li>· Правка из админки уходит на сервер сразу после изменения.</li>
           <li>· Если интернета нет — правка ждёт в браузере и уходит сама.</li>
-          <li>· Вход в админку по PIN и есть право на запись: токены не нужны.</li>
+          <li>· Вход, токены и настройки не нужны: сайт пишет в базу сам.</li>
         </ul>
       </div>
     </div>

@@ -5,11 +5,10 @@
 // не откатывалась после перезагрузки.
 //
 // Хранилище: Deno KV (встроенная база Deno Deploy, 1 ГБ на бесплатном плане).
-// Авторизация записи: PIN админки (по умолчанию 9086), без токенов.
+// Никакого входа, токенов и PIN: писать может только свой же сайт (тот же
+// домен), поэтому правки из админки уходят в базу сами и сразу.
 // Файлы (постеры, видео): хранятся в KV чанками; большие файлы лучше
 // загружать ссылкой на внешнее хранилище.
-
-const ADMIN_PIN = Deno.env.get("ADMIN_PIN") || "9086";
 const KV_CHUNK_BYTES = 48 * 1024; // запас под лимит значения KV (64 КиБ)
 const MAX_UPLOAD_BYTES = 45 * 1024 * 1024; // без внешнего хранилища больше нет смысла
 const MAX_JSON_BYTES = 8 * 1024 * 1024;
@@ -62,6 +61,24 @@ const decoder = new TextDecoder();
 
 // ------------------------------------------------------------------ helpers
 
+/**
+ * Разрешена ли запись этому запросу. Свой домен: браузер сам присылает
+ * Origin для записи, и он должен совпадать с адресом сервера. Чужой сайт
+ * так записать не сможет, а зрителю для чтения ничего не нужно.
+ */
+function authorized(req: Request): boolean {
+  const self = new URL(req.url).origin;
+  const origin = req.headers.get("origin");
+  if (origin) return origin === self;
+  // Без Origin (curl, скрипт): разрешаем только локальную отладку
+  const host = req.headers.get("host") || "";
+  return (
+    host.startsWith("localhost") ||
+    host.startsWith("127.0.0.1") ||
+    host === self.replace(/^https?:\/\//, "")
+  );
+}
+
 function json(payload: unknown, status = 200, extra: Record<string, string> = {}) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -74,20 +91,6 @@ function json(payload: unknown, status = 200, extra: Record<string, string> = {}
       ...extra,
     },
   });
-}
-
-/** Сравнение PIN без утечки по времени */
-function authorized(req: Request): boolean {
-  const header = req.headers.get("authorization") || "";
-  const pin = header.toLowerCase().startsWith("bearer ")
-    ? header.slice(7).trim()
-    : req.headers.get("x-admin-pin") || "";
-  const a = encoder.encode(String(pin));
-  const b = encoder.encode(ADMIN_PIN);
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
-  return diff === 0;
 }
 
 async function readJson(req: Request): Promise<any> {
@@ -227,7 +230,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   }
 
   if (path === "/data" && req.method === "PUT") {
-    if (!authorized(req)) return json({ error: "Неверный PIN админки" }, 401);
+    if (!authorized(req)) return json({ error: "Запись разрешена только своему сайту" }, 403);
     const body = await readJson(req);
     if (!body || !Array.isArray(body.catalog) || !Array.isArray(body.actors)) {
       return json({ error: "Ожидается объект с полями catalog и actors" }, 400);
@@ -270,7 +273,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
 
   // ---- файлы
   if (path === "/upload" && req.method === "POST") {
-    if (!authorized(req)) return json({ error: "Неверный PIN админки" }, 401);
+    if (!authorized(req)) return json({ error: "Запись разрешена только своему сайту" }, 403);
     const original = url.searchParams.get("name") || "file";
     const buf = new Uint8Array(await req.arrayBuffer());
     if (!buf.length) return json({ error: "Пустой файл" }, 400);
@@ -293,7 +296,7 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   }
 
   if (path === "/uploads" && req.method === "GET") {
-    if (!authorized(req)) return json({ error: "Неверный PIN админки" }, 401);
+    if (!authorized(req)) return json({ error: "Запись разрешена только своему сайту" }, 403);
     const files: unknown[] = [];
     for await (const entry of kv.list<MediaMeta>({ prefix: ["media"] })) {
       const { name, size, type, createdAt } = entry.value;
@@ -310,14 +313,14 @@ async function handleApi(req: Request, url: URL): Promise<Response> {
   }
 
   if (parts[0] === "uploads" && parts[1] && req.method === "DELETE") {
-    if (!authorized(req)) return json({ error: "Неверный PIN админки" }, 401);
+    if (!authorized(req)) return json({ error: "Запись разрешена только своему сайту" }, 403);
     const name = decodeURIComponent(parts.slice(1).join("/")).split("/").pop() || "";
     await deleteMedia(name);
     return json({ ok: true });
   }
 
   if (path === "/auth/check" && req.method === "POST") {
-    return json({ ok: authorized(req) }, authorized(req) ? 200 : 401);
+    return json({ ok: authorized(req) }, authorized(req) ? 200 : 403);
   }
 
   return json({ error: `Неизвестный маршрут ${req.method} ${url.pathname}` }, 404);
@@ -435,4 +438,4 @@ Deno.serve({ port: PORT, hostname: "0.0.0.0" }, async (req: Request) => {
   }
 });
 
-console.log(`F304Lteam сервер на порту ${PORT}, хранилище Deno KV, PIN админки: ${ADMIN_PIN}`);
+console.log(`F304Lteam сервер на порту ${PORT}, хранилище ${storage}, запись — только своему домену`);

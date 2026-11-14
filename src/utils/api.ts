@@ -1,85 +1,20 @@
 // Клиент API F304Lteam: единый источник данных для всех устройств.
 //
-// Базовый URL:
-//   - адрес общего сервера задан в одном месте (SERVER_URL) и одинаков для всех
-//     устройств: менять в браузере ничего не нужно;
-//   - если сборка сделана с VITE_API_URL — он имеет приоритет;
-//   - если сайт открыт с того же сервера, что и API — относительный "/api";
-//   - ручной адрес из настроек остаётся только как аварийный override.
-const API_KEY = "f304lteam_api_base_v1";
-const TOKEN_KEY = "f304lteam_admin_token_v1";
+// Адрес один и тот же для всех и задан ниже одной строкой (SERVER_URL).
+// Ничего не перебирается и не запрашивается у пользователя: либо сервер
+// известен сборке, либо сайт работает на том же домене, что и API.
 const USER_KEY = "f304lteam_user_id_v1";
 
 const ENV_BASE = (import.meta.env.VITE_API_URL as string | undefined) || "";
 
 /**
- * Адрес общего сервера студии (Deno Deploy + Deno KV).
- * Один на весь проект: правится здесь или через VITE_API_URL при сборке.
- * Пока значение пустое, сайт работает на одном домене с API (если сервер
- * отдаёт и сайт, и /api) — это основной режим.
+ * Адрес общего сервера студии (Deno Deploy + Deno KV) — одна строка на весь
+ * проект. Если пусто, используется тот же домен, что и у сайта (сервер отдаёт
+ * и статику, и /api).
  */
 export const SERVER_URL: string = "";
 
-/**
- * Возможные адреса сервера, которые проверяются автоматически.
- * Адрес Deno Deploy предсказуем: <app>.<org>.deno.net — значения совпадают
- * с deno.json, поэтому после создания приложения ничего вводить не нужно.
- */
-export const SERVER_CANDIDATES: string[] = [
-  SERVER_URL,
-  "",
-  "https://f304lteam.krsentertainment.deno.net",
-  "https://f304lteam-f304lteam.krsentertainment.deno.net",
-].filter((v, i, arr) => arr.indexOf(v) === i);
-
-let discovered: string | null = null;
-let discoverPromise: Promise<string | null> | null = null;
-
-/**
- * Ищет живой сервер среди кандидатов (один раз за сессию, результат
- * запоминается). Возвращает адрес, который отвечает на /api/health.
- */
-export async function discoverApiBase(force = false): Promise<string | null> {
-  if (!force && discovered !== null) return discovered;
-  if (!force && discoverPromise) return discoverPromise;
-
-  discoverPromise = (async () => {
-    // Проверяем все варианты одновременно, чтобы не ждать по 4 секунды каждый
-    const probes = SERVER_CANDIDATES.map(async (base) => {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 4000);
-        const res = await fetch(`${base}/api/health`, {
-          signal: controller.signal,
-          cache: "no-store",
-        });
-        clearTimeout(timer);
-        if (!res.ok) return null;
-        const body = (await res.json()) as { ok?: boolean };
-        return body?.ok ? base : null;
-      } catch {
-        return null;
-      }
-    });
-    const found = (await Promise.all(probes)).find((v) => v !== null);
-    if (found === undefined) {
-      discovered = null;
-      return null;
-    }
-    // Запоминаем рабочий адрес, чтобы дальше ходить прямо в него
-    if (found) localStorage.setItem(API_KEY, found);
-    discovered = found;
-    return found;
-  })();
-
-  const result = await discoverPromise;
-  discoverPromise = null;
-  return result;
-}
-
 export function getApiBase(): string {
-  const stored = localStorage.getItem(API_KEY);
-  if (stored) return stored.replace(/\/$/, "");
   if (ENV_BASE) return ENV_BASE.replace(/\/$/, "");
   if (SERVER_URL) return SERVER_URL.replace(/\/$/, "");
   // На том же origin, что и сайт (сервер отдаёт и статику, и API)
@@ -89,28 +24,9 @@ export function getApiBase(): string {
   return "";
 }
 
-/** Явно задать адрес сервера (например, https://f304lteam-api.onrender.com) */
-export function setApiBase(url: string) {
-  const clean = url.trim().replace(/\/$/, "");
-  if (clean) localStorage.setItem(API_KEY, clean);
-  else localStorage.removeItem(API_KEY);
-}
-
 /** Явный адрес из env/настроек — нужен, чтобы понять, есть ли смысл стучаться */
 export function hasApi(): boolean {
   return Boolean(getApiBase() || ENV_BASE || location.protocol.startsWith("http"));
-}
-
-// ------------------------------------------------------------- админ-токен
-
-/** PIN админки (по умолчанию 9086) — используется как ключ записи на сервере */
-export function getAdminToken(): string {
-  return localStorage.getItem(TOKEN_KEY) || "";
-}
-
-export function setAdminToken(token: string) {
-  if (token) localStorage.setItem(TOKEN_KEY, token.trim());
-  else localStorage.removeItem(TOKEN_KEY);
 }
 
 // -------------------------------------------------- идентификатор устройства
@@ -140,10 +56,7 @@ async function request<T>(
   if (!headers.has("Content-Type") && init.body && typeof init.body === "string") {
     headers.set("Content-Type", "application/json");
   }
-  if (admin) {
-    // PIN вводится в админке один раз; по умолчанию — стандартный код 9086
-    headers.set("Authorization", `Bearer ${getAdminToken() || "9086"}`);
-  }
+  void admin; // права записи проверяет сервер по самому домену
   const res = await fetch(`${getApiBase()}/api${path}`, { ...init, headers });
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
@@ -222,7 +135,6 @@ export const api = {
         "POST",
         `${getApiBase()}/api/upload?name=${encodeURIComponent(file.name || "file")}`
       );
-      xhr.setRequestHeader("Authorization", `Bearer ${getAdminToken() || "9086"}`);
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
       };
