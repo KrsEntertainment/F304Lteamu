@@ -1,0 +1,101 @@
+# Синхронизация данных между устройствами через сам GitHub (без внешнего сервера).
+#
+# Как это работает:
+#   1. Браузер вызывает API-диспатч этого workflow, передавая новое состояние.
+#   2. Workflow обновляет data/state.json и публикует свежую сборку в gh-pages.
+#   3. Все остальные устройства читают state.json с домена GitHub Pages.
+name: sync-data
+
+on:
+  workflow_dispatch:
+    inputs:
+      payload:
+        description: "JSON с новым состоянием (null = только пересборка)"
+        required: false
+        default: "null"
+      reason:
+        description: "Что изменилось"
+        required: false
+        default: "manual"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-data
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: arena/f8b646d0-f304lteamu
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Обновить состояние
+        if: ${{ github.event.inputs.payload != 'null' && github.event.inputs.payload != '' }}
+        env:
+          PAYLOAD: ${{ github.event.inputs.payload }}
+          REASON: ${{ github.event.inputs.reason }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const payload = JSON.parse(process.env.PAYLOAD);
+            const file = "data/state.json";
+            const current = JSON.parse(fs.readFileSync(file, "utf8"));
+            const next = { ...current };
+            if (payload.studioData) next.studioData = payload.studioData;
+            if (payload.lists) next.lists = { ...current.lists, ...payload.lists };
+            if (payload.progress) next.progress = { ...current.progress, ...payload.progress };
+            next.updatedAt = Date.now();
+            next.reason = process.env.REASON || "update";
+            fs.writeFileSync(file, JSON.stringify(next, null, 2) + "\n");
+            console.log("state.json обновлён:", next.updatedAt);
+          '
+
+      - name: Установить зависимости и собрать сайт
+        run: |
+          npm ci
+          npm run build
+
+      - name: Коммит состояния
+        if: ${{ github.event.inputs.payload != 'null' && github.event.inputs.payload != '' }}
+        run: |
+          git config user.name "F304Lteam bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/state.json
+          if git diff --cached --quiet; then
+            echo "Изменений нет"
+          else
+            git commit -m "data: ${{ github.event.inputs.reason || 'update' }} [skip ci]"
+            git push
+          fi
+
+      - name: Публикация в gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TMP=$(mktemp -d)
+          git clone --depth 1 --branch gh-pages "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$TMP/site"
+          find "$TMP/site" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -r dist/. "$TMP/site/"
+          cp data/state.json "$TMP/site/state.json"
+          : > "$TMP/site/.nojekyll"
+          cd "$TMP/site"
+          git config user.name "F304Lteam bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Публикация не требуется"
+          else
+            git commit -m "deploy: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push origin HEAD:gh-pages
+          fi
