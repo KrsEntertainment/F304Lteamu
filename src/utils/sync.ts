@@ -1,14 +1,16 @@
 // Синхронизация состояния между устройствами.
 //
-// Источник правды — общий сервер студии (main.ts, Deno KV): он в репозитории,
-// адрес прописан в сборке, поэтому искать и вводить ничего не нужно.
-// Если сервер недоступен, данные не теряются: правка ждёт в браузере и уходит
-// сама, как только связь вернётся.
+// Два хранилища, между которыми не нужно выбирать:
+//   1) общий сервер студии (main.ts, Deno KV) — если он запущен и отвечает;
+//   2) GitHub-репозиторий — работает всегда, в том числе на GitHub Pages.
+// Проверка одна и та же: жив ли /api/health на том адресе, что прописан в
+// сборке. Никакого перебора адресов и никакого ввода с клавиатуры.
 //
 // Локальные данные (localStorage) — только кеш и страховка, пока правка не
 // ушла в общую базу. Такую правку помечаем pending, и чужая копия её не
 // перетирает.
 import { api, getUserId, resolveServerUrl } from "./api";
+import { getGhToken, hasGithubWrite, readGhState, writeGhState } from "./githubStore";
 import { StudioData, WatchProgressItem } from "../types";
 
 /** Синхронизация доступна всегда: есть сервер — работаем с ним, нет — с GitHub */
@@ -124,9 +126,28 @@ export function hasPending(): boolean {
   }
 }
 
-/** Право записи есть всегда: сервер свой, вход не требуется */
+/** Куда пишем: живой сервер, иначе репозиторий */
+type Store = "server" | "github";
+let store: Store | null = null;
+
+/**
+ * Определяет хранилище один раз по факту ответа сервера. Ничего не перебираем:
+ * адрес один, запрос один.
+ */
+export async function activeStore(force = false): Promise<Store> {
+  if (!force && store) return store;
+  try {
+    const health = await api.health();
+    store = health?.ok ? "server" : hasGithubWrite() ? "github" : "server";
+  } catch {
+    store = hasGithubWrite() ? "github" : "server";
+  }
+  return store;
+}
+
+/** Право записи: сервер пишем по своему домену, репозиторий — по сохранённому ключу */
 export function canWriteRemote(): boolean {
-  return true;
+  return store === "github" ? hasGithubWrite() : true;
 }
 
 // ------------------------------------------------------------------- чтение
@@ -136,12 +157,30 @@ export function canWriteRemote(): boolean {
  * Сервер — главный источник. Если на сервере данных ещё нет, а локально они
  * есть — отправляем локальные наверх.
  */
-export async function pullData(localFallback: StudioData): Promise<SyncResult<StudioData>> {
+export async function pullData(
+  localFallback: StudioData,
+  force = false
+): Promise<SyncResult<StudioData>> {
   // Неотправленные правки важнее серверной копии
   if (hasPending()) {
     return { data: localFallback, updatedAt: 0, fromServer: false };
   }
 
+
+  if ((await activeStore()) === "github") {
+    try {
+      const state = await readGhState(force);
+      if (state.studioData) {
+        const normalized = normalizeUrls(state.studioData);
+        writeLocalData(normalized);
+        localStorage.setItem(LOCAL_VERSION_KEY, String(state.updatedAt));
+        return { data: normalized, updatedAt: state.updatedAt, fromServer: true };
+      }
+    } catch {
+      /* локальные данные ниже */
+    }
+    return { data: localFallback, updatedAt: 0, fromServer: false };
+  }
 
   try {
     const remote = await api.getData<StudioData>();
@@ -167,6 +206,15 @@ export async function pullData(localFallback: StudioData): Promise<SyncResult<St
 
 /** Проверить, изменилось ли что-то на сервере (лёгкий запрос) */
 export async function checkVersion(): Promise<number | null> {
+  if ((await activeStore()) === "github") {
+    try {
+      const state = await readGhState(true);
+      const localVersion = Number(localStorage.getItem(LOCAL_VERSION_KEY) || 0);
+      return state.updatedAt > localVersion ? state.updatedAt : null;
+    } catch {
+      return null;
+    }
+  }
   try {
     const { updatedAt } = await api.getVersion();
     const localVersion = Number(localStorage.getItem(LOCAL_VERSION_KEY) || 0);
@@ -179,6 +227,18 @@ export async function checkVersion(): Promise<number | null> {
 export async function pullIfChanged(): Promise<StudioData | null> {
   if (hasPending()) return null; // сначала нужно отправить свои правки
   if ((await checkVersion()) === null) return null;
+  if ((await activeStore()) === "github") {
+    try {
+      const state = await readGhState(true);
+      if (!state.studioData) return null;
+      const normalized = normalizeUrls(state.studioData);
+      writeLocalData(normalized);
+      localStorage.setItem(LOCAL_VERSION_KEY, String(state.updatedAt));
+      return normalized;
+    } catch {
+      return null;
+    }
+  }
   try {
     const remote = await api.getData<StudioData>();
     if (!remote.data) return null;
@@ -196,16 +256,28 @@ export async function pullIfChanged(): Promise<StudioData | null> {
 /** Отправить контент студии на сервер (только админ) */
 export async function pushData(data: StudioData): Promise<number | null> {
   markPending(true);
-  try {
-    const { updatedAt } = await api.saveData(data);
-    localStorage.setItem(LOCAL_VERSION_KEY, String(updatedAt));
-    markPending(false);
-    return updatedAt;
-  } catch (err) {
-    // Связи нет — правка остаётся в браузере с меткой «не отправлено»
-    // и уходит сама при следующей попытке.
-    throw err;
+
+  if ((await activeStore()) === "server") {
+    try {
+      const { updatedAt } = await api.saveData(data);
+      localStorage.setItem(LOCAL_VERSION_KEY, String(updatedAt));
+      markPending(false);
+      return updatedAt;
+    } catch (err) {
+      // Сервер пропал во время работы — если есть доступ к репозиторию,
+      // уводим правку туда, чтобы она не осталась только в браузере.
+      if (!hasGithubWrite()) throw err;
+      store = "github";
+    }
   }
+
+  const saved = await writeGhState(
+    (current) => ({ ...current, studioData: data }),
+    "studio catalog update"
+  );
+  localStorage.setItem(LOCAL_VERSION_KEY, String(saved.updatedAt));
+  markPending(false);
+  return saved.updatedAt;
 }
 
 /** Проверка связи с сервером (для индикатора и панели админки) */
@@ -213,13 +285,27 @@ export async function pingServer(): Promise<{
   ok: boolean;
   updatedAt?: number;
   storage?: string;
+  where?: "server" | "github";
 }> {
   try {
     const health = await api.health();
-    return { ok: Boolean(health?.ok), updatedAt: health?.updatedAt, storage: health?.storage };
+    if (health?.ok) {
+      store = "server";
+      return { ok: true, updatedAt: health.updatedAt, storage: health.storage, where: "server" };
+    }
   } catch {
-    return { ok: false };
+    /* смотрим репозиторий */
   }
+  if (hasGithubWrite()) {
+    try {
+      const state = await readGhState(true);
+      store = "github";
+      return { ok: true, updatedAt: state.updatedAt, storage: "github", where: "github" };
+    } catch {
+      /* совсем нет связи */
+    }
+  }
+  return { ok: false, where: store ?? undefined };
 }
 
 // ------------------------- зрительские данные (список и прогресс)
@@ -229,6 +315,17 @@ export async function pullUserState(): Promise<{
   progress: Record<string, WatchProgressItem> | null;
 }> {
   const userId = getUserId();
+  if ((await activeStore()) === "github") {
+    try {
+      const state = await readGhState();
+      const list = state.lists[userId] ?? null;
+      const progress = state.progress[userId] ?? null;
+      if (list) writeLocalList(list);
+      return { list, progress };
+    } catch {
+      return { list: null, progress: null };
+    }
+  }
   const [listRes, progressRes] = await Promise.allSettled([
     api.getList(userId),
     api.getProgress<WatchProgressItem>(userId),
@@ -240,6 +337,18 @@ export async function pullUserState(): Promise<{
 }
 
 export async function pushList(list: string[]) {
+  if ((await activeStore()) === "github") {
+    if (!getGhToken()) return;
+    try {
+      await writeGhState((current) => {
+        const userId = getUserId();
+        return { ...current, lists: { ...current.lists, [userId]: list } };
+      }, "my list update");
+    } catch {
+      /* останется локально */
+    }
+    return;
+  }
   try {
     await api.saveList(getUserId(), list);
   } catch {
@@ -248,6 +357,20 @@ export async function pushList(list: string[]) {
 }
 
 export async function pushProgress(progress: WatchProgressItem) {
+  if ((await activeStore()) === "github") {
+    if (!getGhToken()) return;
+    try {
+      await writeGhState((current) => {
+        const userId = getUserId();
+        const userProgress = { ...(current.progress[userId] || {}) };
+        userProgress[progress.itemId] = progress;
+        return { ...current, progress: { ...current.progress, [userId]: userProgress } };
+      }, "watch progress");
+    } catch {
+      /* останется локально */
+    }
+    return;
+  }
   try {
     await api.saveProgress(getUserId(), progress);
   } catch {

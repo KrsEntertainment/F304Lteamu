@@ -6,6 +6,7 @@
 // (idb://...): правка не теряется и уедет на сервер вместе со следующей
 // успешной отправкой.
 import { api, resolveServerUrl } from "./api";
+import { hasGithubWrite, uploadMediaToGithub } from "./githubStore";
 
 const DB_NAME = "f304lteam_media_db";
 const STORE_NAME = "media_blobs";
@@ -37,7 +38,7 @@ export function isIdbRef(url?: string): boolean {
   return Boolean(url && url.startsWith("idb://"));
 }
 
-/** Загружать файлы можно всегда: сервер свой, вход не нужен */
+/** Куда заливать файлы: свой сервер или (если его нет) репозиторий */
 export function canUploadToServer(): boolean {
   return true;
 }
@@ -54,7 +55,16 @@ export async function saveGalleryFile(
     const result = await api.uploadFile(file, onProgress);
     return result.url; // /uploads/<файл> — общий для всех устройств
   } catch (err) {
-    console.warn("Загрузка на сервер не удалась, сохраняю локально:", err);
+    console.warn("Сервер недоступен, пробую репозиторий:", err);
+  }
+
+  if (hasGithubWrite()) {
+    try {
+      const result = await uploadMediaToGithub(file, onProgress);
+      return result.ref; // сразу доступен по публичной ссылке
+    } catch (err) {
+      console.warn("Репозиторий недоступен, сохраняю локально:", err);
+    }
   }
 
   const id = `media_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
