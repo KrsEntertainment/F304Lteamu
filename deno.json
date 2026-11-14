@@ -1,0 +1,23 @@
+{
+  "deploy": {
+    "org": "krsentertainment",
+    "app": "f304lteam",
+    "install": "npm ci",
+    "build": "npm run build",
+    "runtime": {
+      "type": "dynamic",
+      "entrypoint": "./main.ts"
+    }
+  },
+  "tasks": {
+    "start": "deno run -A --unstable-kv main.ts"
+  },
+  "fmt": {
+    "lineWidth": 100
+  },
+  "lint": {
+    "rules": {
+      "exclude": ["no-explicit-any"]
+    }
+  }
+}

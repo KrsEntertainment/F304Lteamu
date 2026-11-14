@@ -1,9 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Image as ImageIcon, Film, Upload, X, Link2, CheckCircle2, Loader2 } from 'lucide-react';
-import { resolveMediaUrl, saveGalleryFile, isIdbRef } from '../utils/mediaStore';
+import {
+  resolveMediaUrl,
+  saveGalleryFile,
+  isIdbRef,
+  canUploadToServer,
+} from '../utils/mediaStore';
+import { assetUrl } from '../utils/asset';
 
 export function useMediaUrl(ref?: string): string {
-  const [resolved, setResolved] = useState<string>(() => (ref && !isIdbRef(ref) ? ref : ''));
+  const [resolved, setResolved] = useState<string>(() =>
+    ref && !isIdbRef(ref) ? assetUrl(ref) : ''
+  );
 
   useEffect(() => {
     let active = true;
@@ -12,7 +20,7 @@ export function useMediaUrl(ref?: string): string {
       return;
     }
     if (!isIdbRef(ref)) {
-      setResolved(ref);
+      setResolved(assetUrl(ref));
       return;
     }
     resolveMediaUrl(ref).then((url) => {
@@ -40,12 +48,13 @@ export const MediaImg: React.FC<MediaImgProps> = ({
 }) => {
   const url = useMediaUrl(srcRef);
   const [errored, setErrored] = useState(false);
+  const displayUrl = url;
 
   useEffect(() => {
     setErrored(false);
   }, [url]);
 
-  if (!url || errored) {
+  if (!displayUrl || errored) {
     return (
       <div
         className={`flex flex-col items-center justify-center bg-gradient-to-br from-[#191A24] via-[#12131A] to-[#0B0B10] text-zinc-500 ${className}`}
@@ -60,7 +69,7 @@ export const MediaImg: React.FC<MediaImgProps> = ({
 
   return (
     <img
-      src={url}
+      src={displayUrl}
       alt={alt}
       onError={() => setErrored(true)}
       className={className}
@@ -89,6 +98,7 @@ export const GalleryFilePicker: React.FC<GalleryFilePickerProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [fileMeta, setFileMeta] = useState<string>('');
   const resolvedPreview = useMediaUrl(value);
@@ -97,13 +107,18 @@ export const GalleryFilePicker: React.FC<GalleryFilePickerProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
+    setUploadPercent(0);
     try {
-      const savedRef = await saveGalleryFile(file);
+      const savedRef = await saveGalleryFile(file, setUploadPercent);
       onChange(savedRef);
       const mb = (file.size / (1024 * 1024)).toFixed(1);
-      setFileMeta(`${file.name} (${mb} МБ)`);
+      const where = savedRef.startsWith('/uploads/') || savedRef.includes('/uploads/')
+        ? 'в общее хранилище'
+        : 'локально';
+      setFileMeta(`${file.name} (${mb} МБ) — загружено ${where}`);
     } finally {
       setUploading(false);
+      setUploadPercent(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -188,7 +203,9 @@ export const GalleryFilePicker: React.FC<GalleryFilePickerProps> = ({
                   <Upload className="h-3.5 w-3.5" />
                 )}
                 {uploading
-                  ? 'Загрузка...'
+                  ? uploadPercent !== null
+                    ? `Загрузка ${uploadPercent}%`
+                    : 'Загрузка...'
                   : accept === 'image'
                     ? 'Выбрать фото из галереи'
                     : 'Выбрать видео из галереи'}
@@ -215,12 +232,18 @@ export const GalleryFilePicker: React.FC<GalleryFilePickerProps> = ({
                 ? fileMeta
                 : value
                   ? isIdbRef(value)
-                    ? 'Сохранено из галереи устройства (локальное медиа)'
-                    : value
+                    ? 'Локальное медиа этого браузера (не видно на других устройствах)'
+                    : value.includes('/uploads/')
+                      ? 'В общей базе — видно на всех устройствах'
+                      : value
                   : hint ||
-                    (accept === 'image'
-                      ? 'JPG, PNG, WEBP прямо из галереи телефона или ПК'
-                      : 'MP4, MOV, WEBM прямо из галереи устройства')}
+                    (canUploadToServer()
+                      ? accept === 'image'
+                        ? 'JPG, PNG, WEBP — уедет на общий сервер, будет видно на всех устройствах'
+                        : 'MP4, MOV, WEBM — уедет на общий сервер, будет видно на всех устройствах'
+                      : accept === 'image'
+                        ? 'JPG, PNG, WEBP из галереи (без связи сохраняются только в этом браузере)'
+                        : 'MP4, MOV, WEBM из галереи (без связи сохраняются только в этом браузере)')}
             </p>
           </div>
         </div>

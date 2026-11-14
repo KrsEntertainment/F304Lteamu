@@ -4,9 +4,15 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build && cp -r public/* dist/ 2>/dev/null || true; mkdir -p dist && cp data/state.json dist/state.json 2>/dev/null || true",
+    "preview": "vite preview",
+    "serve": "node scripts/serve.mjs",
+    "test:sync": "node scripts/sync-test.mjs",
+    "test:smoke": "npm run build && node scripts/smoke.mjs",
+    "start": "deno run -A --unstable-kv main.ts",
+    "test:server": "node scripts/e2e-server.mjs",
+    "test:app": "node scripts/e2e-app.mjs"
   },
   "dependencies": {
     "clsx": "2.1.1",

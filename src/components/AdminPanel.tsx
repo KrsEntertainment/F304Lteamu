@@ -38,6 +38,7 @@ import {
 } from '../types';
 import { AVAILABLE_GENRES } from '../data/initialData';
 import { GalleryFilePicker, MediaImg } from './MediaAssets';
+import { ServerSyncPanel } from './ServerSyncPanel';
 import {
   clearAllGalleryMedia,
   formatBytes,
@@ -54,7 +55,7 @@ interface AdminPanelProps {
   onNotify: (msg: string) => void;
 }
 
-type AdminTab = 'catalog' | 'actors' | 'news' | 'system';
+type AdminTab = 'catalog' | 'actors' | 'news' | 'sync' | 'system';
 
 function createEmptyTitle(type: TitleType = 'series'): CatalogItem {
   return {
@@ -159,7 +160,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [expandedSeasonId, setExpandedSeasonId] = useState<string | null>(null);
 
   // Storage stats
-  const [storageStats, setStorageStats] = useState({ count: 0, totalBytes: 0 });
+  const [storageStats, setStorageStats] = useState<{
+    count: number;
+    totalBytes: number;
+    source: 'server' | 'local';
+  }>({ count: 0, totalBytes: 0, source: 'local' });
   const jsonInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -555,6 +560,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 icon: Newspaper,
               },
               {
+                id: 'sync' as AdminTab,
+                label: 'Сохранение данных',
+                count: null,
+                icon: Server,
+              },
+              {
                 id: 'system' as AdminTab,
                 label: 'JSON / Онлайн-режим',
                 count: null,
@@ -600,11 +611,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="hidden lg:block mt-6 rounded-2xl border border-white/8 bg-[#12131B] p-4 space-y-2">
             <div className="flex items-center gap-2 text-xs font-semibold text-zinc-200">
               <HardDrive className="h-4 w-4 text-[#E50914]" />
-              Галерея устройства
+              Медиа: {storageStats.source === 'server' ? 'сервер' : 'устройство'}
             </div>
             <p className="text-[11px] text-zinc-400 leading-relaxed">
-              Файлов из галереи: <strong className="text-white">{storageStats.count}</strong> (
+              Файлов: <strong className="text-white">{storageStats.count}</strong> (
               {formatBytes(storageStats.totalBytes)})
+              {storageStats.source === 'server' ? ' • общие для всех' : ' • только этот браузер'}
             </p>
             <p className="text-[10px] font-mono text-zinc-500">
               Код входа: 9086 • Без внешней БД
@@ -1757,6 +1769,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {/* =============================================================== */}
           {/* TAB 4: JSON ONLINE MODE, SERVER.JS & SETTINGS                   */}
           {/* =============================================================== */}
+          {activeTab === 'sync' && (
+            <div className="max-w-3xl pb-10">
+              <div className="mb-5">
+                <h2 className="font-display text-xl sm:text-2xl font-bold text-white">
+                  Синхронизация устройств
+                </h2>
+                <p className="mt-1 text-xs sm:text-sm text-zinc-400">
+                  Правки уходят в общую базу автоматически. Токены и настройки не нужны.
+                </p>
+              </div>
+              <ServerSyncPanel data={data} onPulled={() => window.location.reload()} />
+            </div>
+          )}
+
           {activeTab === 'system' && (
             <div className="space-y-6 max-w-3xl pb-10">
               <div>
@@ -1863,7 +1889,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <div className="flex items-center gap-2">
                     <HardDrive className="h-5 w-5 text-[#E50914]" />
                     <h3 className="font-display text-sm font-bold text-white">
-                      Хранилище галереи и сброс
+                      Хранилище медиа и сброс
                     </h3>
                   </div>
                   <span className="inline-flex items-center gap-1 font-mono text-xs text-emerald-400">
