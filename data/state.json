@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "updatedAt": 1794683821307,
+  "version": 1,
+  "updatedAt": 1794682089433,
   "reason": "initial catalog",
   "studioData": {
     "settings": {
@@ -325,6 +325,50 @@
             ]
           }
         ]
+      },
+      {
+        "id": "movie-signal-iz-glubiny",
+        "type": "movie",
+        "title": "Сигнал из глубины",
+        "tagline": "На орбите тишина звучит громче любой тревоги.",
+        "description": "Исследовательский модуль «Авангард-9» теряет связь с Землёй за 14 часов до планового возвращения. Бортинженер Вера расшифровывает странный ритмический импульс с внешнего корпуса — и обнаруживает, что на станции находится незваный пассажир, копирующий голоса экипажа.",
+        "year": 2025,
+        "ageRating": "16+",
+        "rating": 9.2,
+        "duration": "2ч 06м",
+        "quality": "IMAX",
+        "genres": [
+          "Фантастика",
+          "Триллер",
+          "Мистика"
+        ],
+        "poster": "/images/poster-signal-iz-glubiny.jpg",
+        "backdrop": "/images/poster-signal-iz-glubiny.jpg",
+        "trailerUrl": "https://videos.pexels.com/video-files/20350798/20350798-uhd_3840_2160_50fps.mp4",
+        "videoUrl": "https://videos.pexels.com/video-files/20350798/20350798-uhd_3840_2160_50fps.mp4",
+        "director": "Дмитрий Соколов",
+        "published": true,
+        "isFeatured": true,
+        "isNew": true,
+        "isTop": true,
+        "createdAt": "2025-09-15",
+        "cast": [
+          {
+            "actorId": "actor-5",
+            "characterName": "Вера Орлова",
+            "isLead": true
+          },
+          {
+            "actorId": "actor-3",
+            "characterName": "Капитан Белов",
+            "isLead": true
+          },
+          {
+            "actorId": "actor-4",
+            "characterName": "Инженер Павел"
+          }
+        ],
+        "seasons": []
       },
       {
         "id": "series-poslednii-dubl",
