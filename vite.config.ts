@@ -16,4 +16,21 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  server: {
+    host: "0.0.0.0",
+    port: 5173,
+    strictPort: true,
+    // Разрешаем запросы через preview-домен песочницы (*.e2b.app)
+    allowedHosts: true,
+    hmr: {
+      clientPort: 443,
+      protocol: "wss",
+    },
+  },
+  preview: {
+    host: "0.0.0.0",
+    port: 4173,
+    strictPort: true,
+    allowedHosts: true,
+  },
 });
