@@ -38,6 +38,7 @@ import {
 } from '../types';
 import { AVAILABLE_GENRES } from '../data/initialData';
 import { GalleryFilePicker, MediaImg } from './MediaAssets';
+import { PublishChangesPanel } from './PublishChangesPanel';
 import { ServerSyncPanel } from './ServerSyncPanel';
 import {
   clearAllGalleryMedia,
@@ -142,6 +143,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onNotify,
 }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('catalog');
+  const [isSyncOpen, setIsSyncOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Editors
@@ -561,7 +563,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               },
               {
                 id: 'sync' as AdminTab,
-                label: 'Сервер и синхронизация',
+                label: 'Публикация изменений',
                 count: null,
                 icon: Server,
               },
@@ -1773,17 +1775,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="max-w-3xl pb-10">
               <div className="mb-5">
                 <h2 className="font-display text-xl sm:text-2xl font-bold text-white">
-                  Сервер и синхронизация устройств
+                  Синхронизация устройств
                 </h2>
                 <p className="mt-1 text-xs sm:text-sm text-zinc-400">
-                  Один источник данных для телефона, ноутбука и любого другого устройства.
+                  Публикация изменений в два клика — без токенов и настроек.
                 </p>
               </div>
-              <ServerSyncPanel
+
+              <PublishChangesPanel
                 data={data}
                 onNotify={onNotify}
-                onReload={() => window.location.reload()}
+                onPublished={() => setIsSyncOpen(false)}
               />
+
+              <button
+                type="button"
+                onClick={() => setIsSyncOpen((v) => !v)}
+                className="mt-4 inline-flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 hover:text-white transition-colors"
+              >
+                {isSyncOpen ? 'Скрыть' : 'Показать'} автозапись через токен (необязательно)
+              </button>
+
+              {isSyncOpen && (
+              <div className="mt-3">
+                <ServerSyncPanel
+                  data={data}
+                  onNotify={onNotify}
+                  onReload={() => window.location.reload()}
+                />
+              </div>
+              )}
             </div>
           )}
 

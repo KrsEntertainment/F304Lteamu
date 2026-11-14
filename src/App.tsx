@@ -235,7 +235,7 @@ export default function App() {
     pushTimerRef.current = window.setTimeout(async () => {
       if (!canWriteRemote()) {
         setSaveState('unsaved');
-        notify('Правки сохранены только на этом устройстве: нет токена записи (Админка → Синхронизация)');
+        notify('Изменения сохранены на устройстве. Чтобы их увидели другие — Админка → «Публикация изменений»');
         return;
       }
       try {

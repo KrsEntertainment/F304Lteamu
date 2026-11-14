@@ -32,9 +32,9 @@ export const ServerSyncBar: React.FC<ServerSyncBarProps> = ({
       : saveState === 'unsaved'
         ? {
             icon: <AlertTriangle className="h-3 w-3" />,
-            text: 'Только на этом устройстве',
-            cls: 'border-[#E50914]/40 bg-[#E50914]/15 text-[#FF8A90]',
-            hint: 'Правки не ушли в общую базу: нет токена записи или сеть недоступна',
+            text: 'Есть неопубликованные правки',
+            cls: 'border-amber-500/40 bg-amber-500/15 text-amber-300',
+            hint: 'Правки сохранены на устройстве. Чтобы их увидели другие: Админка → «Публикация изменений» (2 клика, без токена)',
           }
         : online
           ? {

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  AlertCircle,
   CheckCircle2,
   Cloud,
   CloudOff,
@@ -115,27 +114,8 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({
     onNotify('Настройки синхронизации сохранены');
   };
 
-  const canWrite = mode === 'github' ? Boolean(ghToken.trim()) : Boolean(token.trim());
-
   return (
     <div className="space-y-6">
-      {/* Главная проверка: без токена правки не уходят в общую базу */}
-      {!canWrite && (
-        <div className="rounded-2xl border border-[#E50914]/40 bg-[#E50914]/10 p-4">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#E50914]" />
-            <div>
-              <p className="text-sm font-bold text-white">Запись отключена — правки не сохраняются</p>
-              <p className="mt-1 text-xs leading-relaxed text-[#FFB4B8]">
-                Без токена каталог меняется только в этом браузере: удалённые фильмы вернутся
-                после перезагрузки страницы. Вставьте GitHub-токен ниже и нажмите
-                «Сохранить и проверить».
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Выбор хранилища */}
       <div className="rounded-2xl border border-white/10 bg-[#0E0F16] p-5">
         <h3 className="font-display text-base font-bold text-white">Где хранить общие данные</h3>
