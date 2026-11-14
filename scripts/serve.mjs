@@ -5,8 +5,12 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize, resolve } from "node:path";
 
 const ROOT = resolve("dist");
-const PORT = Number(process.env.PORT || 4173);
 const HOST = "0.0.0.0";
+// Можно слушать несколько портов сразу: PORTS=5173,8080
+const PORTS = (process.env.PORTS || String(process.env.PORT || 4173))
+  .split(",")
+  .map((p) => Number(p.trim()))
+  .filter((p) => Number.isFinite(p) && p > 0);
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -44,7 +48,7 @@ async function sendFile(req, res, filePath, status = 200) {
   res.end(req.method === "HEAD" ? undefined : body);
 }
 
-const server = createServer(async (req, res) => {
+async function handleRequest(req, res) {
   const started = Date.now();
   const host = req.headers.host || "-";
   const ua = (req.headers["user-agent"] || "-").slice(0, 60);
@@ -88,17 +92,33 @@ const server = createServer(async (req, res) => {
     res.writeHead(500, { ...BASE_HEADERS, "Content-Type": "text/plain; charset=utf-8" });
     res.end("Internal error: " + (err && err.message));
   }
-});
+}
 
-server.on("error", (err) => {
-  console.error("[fatal] server error:", err);
-  process.exit(1);
-});
+// ВАЖНО: отдельный сервер на каждый порт. Повторный listen() на одном
+// и том же объекте в Node молча слушает только первый порт.
+function startServer(port) {
+  const server = createServer(handleRequest);
 
-// Держим соединения живыми для прокси превью
-server.keepAliveTimeout = 65_000;
-server.headersTimeout = 70_000;
+  server.on("error", (err) => {
+    console.error(`[fatal] порт ${port}: ${err && err.message}`);
+  });
 
-server.listen(PORT, HOST, () => {
-  console.log(`F304Lteam site listening on http://${HOST}:${PORT} (root: ${ROOT})`);
-});
+  // Держим соединения живыми для прокси превью
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 70_000;
+
+  server.listen(port, HOST, () => {
+    console.log(`F304Lteam site listening on http://${HOST}:${port} (root: ${ROOT})`);
+  });
+
+  return server;
+}
+
+const servers = PORTS.map(startServer);
+
+for (const sig of ["SIGINT", "SIGTERM"]) {
+  process.on(sig, () => {
+    for (const s of servers) s.close();
+    process.exit(0);
+  });
+}
