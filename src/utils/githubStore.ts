@@ -27,6 +27,10 @@ const CDN_URLS = [
   `https://cdn.jsdelivr.net/gh/${GH_OWNER}/${GH_REPO}@${JS_BRANCH}/${STATE_PATH}`,
 ];
 
+/** Адрес публичной копии состояния на ветке gh-pages (для проверки связи) */
+export const PUBLIC_STATE_URL =
+  `https://cdn.jsdelivr.net/gh/${GH_OWNER}/${GH_REPO}@gh-pages/state.json`;
+
 function sameOriginUrl(): string | null {
   if (typeof location === "undefined" || !location.protocol.startsWith("http")) return null;
   return "./state.json";
@@ -97,8 +101,15 @@ export async function readGhState(force = false): Promise<GhState> {
   if (!force && cache && Date.now() - cache.fetchedAt < CACHE_MS) return cache.state;
 
   for (const url of stateUrls()) {
+    const label = url === "./state.json"
+      ? "свой домен"
+      : url.includes("jsdelivr")
+        ? "CDN jsDelivr"
+        : url.includes("raw.githubusercontent")
+          ? "raw.githubusercontent"
+          : "GitHub Pages";
     try {
-      const res = await fetch(`${url}?t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) continue;
       const parsed = (await res.json()) as GhState;
       if (parsed && typeof parsed === "object" && "updatedAt" in parsed) {
@@ -109,6 +120,11 @@ export async function readGhState(force = false): Promise<GhState> {
           progress: parsed.progress || {},
         };
         cache = { state, fetchedAt: Date.now() };
+        try {
+          localStorage.setItem("f304lteam_state_source", label);
+        } catch {
+          /* приватный режим */
+        }
         return state;
       }
     } catch {

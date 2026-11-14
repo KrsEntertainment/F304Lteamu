@@ -22,6 +22,7 @@ import {
   setBackendMode,
   setGhToken,
 } from '../utils/githubStore';
+import { alternateMirrorUrl, isOnMirror } from '../utils/mirrors';
 import { StudioData } from '../types';
 
 interface ServerSyncPanelProps {
@@ -48,6 +49,8 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({
   const [remoteInfo, setRemoteInfo] = useState<{ updatedAt: number; items: number; users: number } | null>(
     null
   );
+  // Какой из источников реально отдал данные (свой домен / CDN / raw)
+  const [sourceName, setSourceName] = useState('');
   const [busy, setBusy] = useState(false);
 
   const checkGithub = async () => {
@@ -55,6 +58,7 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({
     setMessage('');
     try {
       const state = await readGhState(true);
+      setSourceName(localStorage.getItem('f304lteam_state_source') || '—');
       setRemoteInfo({
         updatedAt: state.updatedAt,
         items: state.studioData?.catalog?.length || 0,
@@ -349,6 +353,23 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({
             <dt className="text-zinc-500">Релизов в базе</dt>
             <dd className="font-mono text-zinc-300">
               {mode === 'github' ? remoteInfo?.items ?? '—' : '—'}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
+            <dt className="text-zinc-500">Источник данных</dt>
+            <dd className="font-mono text-emerald-300">{sourceName || '—'}</dd>
+          </div>
+          <div className="flex justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
+            <dt className="text-zinc-500">Если сайт не открывается</dt>
+            <dd className="truncate">
+              <a
+                href={alternateMirrorUrl()}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-[#FF8A90] underline decoration-dotted"
+              >
+                {isOnMirror() ? 'GitHub Pages' : 'jsDelivr-зеркало'}
+              </a>
             </dd>
           </div>
           {account && (
