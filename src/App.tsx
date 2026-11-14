@@ -55,10 +55,15 @@ import {
   readLocalData,
   readLocalList,
   readLocalProgress,
+  addTombs,
   canWriteRemote,
+  clearTombs,
   hasPending,
   markPending,
+  readBaseSnapshot,
+  readTombs,
   syncAvailable,
+  writeBaseSnapshot,
   writeLocalData,
   writeLocalList,
 } from './utils/sync';
@@ -145,8 +150,11 @@ export default function App() {
   );
 
   // Данные с сервера имеют приоритет; локальные правки уходят на сервер
+  // Копия из общей базы запоминается как «было»: по ней считается разница
+  // при сохранении, поэтому удаления не откатываются.
   const applyRemote = useCallback((next: StudioData) => {
     setStudioData(next);
+    writeBaseSnapshot(next);
   }, []);
 
   const handleManualRefresh = useCallback(async () => {
@@ -226,6 +234,20 @@ export default function App() {
     const serialized = JSON.stringify(studioData);
     if (serialized === lastPushedRef.current) return;
 
+    // Удалённые проекты и актёры запоминаем отдельно: даже если старая
+    // вкладка или второе устройство пришлют полный каталог, удаление
+    // не откатится.
+    const base = readBaseSnapshot();
+    if (base) {
+      const goneCatalog = (base.catalog || [])
+        .filter((item) => !studioData.catalog.some((cur) => cur.id === item.id))
+        .map((item) => item.id);
+      const goneActors = (base.actors || [])
+        .filter((item) => !studioData.actors.some((cur) => cur.id === item.id))
+        .map((item) => item.id);
+      addTombs([...goneCatalog, ...goneActors]);
+    }
+
     // Сразу фиксируем локально и помечаем как «не отправлено» — даже если
     // вкладку закроют через секунду, правка не потеряется.
     markPending(true);
@@ -242,6 +264,7 @@ export default function App() {
         await pushData(studioData);
         lastPushedRef.current = serialized;
         markPending(false);
+        clearTombs(readTombs());
         setSaveState('saved');
         setSyncOnline(true);
         notify('Изменения сохранены в общей базе');

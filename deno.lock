@@ -12,7 +12,6 @@
     "npm:react@19.2.6": "19.2.6",
     "npm:tailwind-merge@3.4.0": "3.4.0",
     "npm:tailwindcss@4.1.17": "4.1.17",
-    "npm:typescript@5.9.3": "5.9.3",
     "npm:vite-plugin-singlefile@2.3.0": "2.3.0_vite@7.3.7_@types+node@22.19.17",
     "npm:vite@7.3.7": "7.3.7_@types+node@22.19.17"
   },
@@ -1002,12 +1001,13 @@
         "npm:@types/react@19.2.7",
         "npm:@vitejs/plugin-react@5.1.1",
         "npm:clsx@2.1.1",
+        "npm:jsdom@^31.0.1",
         "npm:lucide-react@^1.73.0",
         "npm:react-dom@19.2.6",
         "npm:react@19.2.6",
         "npm:tailwind-merge@3.4.0",
         "npm:tailwindcss@4.1.17",
-        "npm:typescript@5.9.3",
+        "npm:typescript@^5.9.3",
         "npm:vite-plugin-singlefile@2.3.0",
         "npm:vite@7.3.7"
       ]

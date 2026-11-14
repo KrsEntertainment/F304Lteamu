@@ -10,6 +10,7 @@
 // ушла в общую базу. Такую правку помечаем pending, и чужая копия её не
 // перетирает.
 import { api, getUserId, resolveServerUrl } from "./api";
+import { mergeIntoRemote } from "./merge";
 import { getGhToken, hasGithubWrite, readGhState, writeGhState } from "./githubStore";
 import { StudioData, WatchProgressItem } from "../types";
 
@@ -23,6 +24,60 @@ const MYLIST_KEY = "f304lteam_mylist_v1";
 const PROGRESS_KEY = "f304lteam_progress_v1";
 const LOCAL_VERSION_KEY = "f304lteam_data_version_v1";
 const PENDING_KEY = "f304lteam_pending_push_v1";
+const BASE_KEY = "f304lteam_last_synced_json_v1";
+const TOMBS_KEY = "f304lteam_deleted_ids_v1";
+
+/** Последнее состояние, которое мы видели в общей базе */
+export function readBaseSnapshot(): StudioData | null {
+  try {
+    const raw = localStorage.getItem(BASE_KEY);
+    return raw ? (JSON.parse(raw) as StudioData) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeBaseSnapshot(data: StudioData) {
+  try {
+    localStorage.setItem(BASE_KEY, JSON.stringify(data));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * «Могилы»: id удалённых проектов и актёров. Нужны, чтобы старая вкладка
+ * или второе устройство не вернули удалённое обратно при своём сохранении.
+ */
+export function readTombs(): string[] {
+  try {
+    const raw = localStorage.getItem(TOMBS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addTombs(ids: string[]) {
+  if (!ids.length) return;
+  const set = new Set([...readTombs(), ...ids]);
+  try {
+    localStorage.setItem(TOMBS_KEY, JSON.stringify([...set]));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function clearTombs(ids: string[]) {
+  if (!ids.length) return;
+  const keep = readTombs().filter((id) => !ids.includes(id));
+  try {
+    localStorage.setItem(TOMBS_KEY, JSON.stringify(keep));
+  } catch {
+    /* ignore */
+  }
+}
 
 export const POLL_INTERVAL_MS = 30_000;
 
@@ -251,16 +306,24 @@ export async function pullIfChanged(): Promise<StudioData | null> {
   }
 }
 
+export { mergeIntoRemote } from "./merge";
+
 // ------------------------------------------------------------------- запись
 
 /** Отправить контент студии на сервер (только админ) */
 export async function pushData(data: StudioData): Promise<number | null> {
   markPending(true);
+  const base = readBaseSnapshot();
+  const tombs = readTombs();
 
   if ((await activeStore()) === "server") {
     try {
-      const { updatedAt } = await api.saveData(data);
+      const current = await api.getData<StudioData>();
+      const remote = current.data ? normalizeUrls(current.data) : data;
+      const merged = mergeIntoRemote(base, data, remote, tombs);
+      const { updatedAt } = await api.saveData(merged);
       localStorage.setItem(LOCAL_VERSION_KEY, String(updatedAt));
+      writeBaseSnapshot(merged);
       markPending(false);
       return updatedAt;
     } catch (err) {
@@ -271,11 +334,16 @@ export async function pushData(data: StudioData): Promise<number | null> {
     }
   }
 
-  const saved = await writeGhState(
-    (current) => ({ ...current, studioData: data }),
-    "studio catalog update"
-  );
+  let mergedForGithub = data;
+  const saved = await writeGhState((current) => {
+    // Ветку с актуальными данными читаем внутри mutate — это свежая копия
+    const remote = (current.studioData as StudioData | null) ?? data;
+    mergedForGithub = mergeIntoRemote(base, data, remote, tombs);
+    return { ...current, studioData: mergedForGithub };
+  }, "studio catalog update");
+
   localStorage.setItem(LOCAL_VERSION_KEY, String(saved.updatedAt));
+  writeBaseSnapshot(mergedForGithub);
   markPending(false);
   return saved.updatedAt;
 }

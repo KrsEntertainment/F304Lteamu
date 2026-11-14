@@ -157,6 +157,46 @@ try {
   viewer.w.close();
   const catalogFromServer = await serverCatalog();
   ok("в общей базе один проект", catalogFromServer.length === 1, `${catalogFromServer.length}`);
+
+  // ---------------- сценарий из жалобы: две вкладки, удаление проекта
+  await fetch(`${BASE}/api/data`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Origin: BASE },
+    body: JSON.stringify({
+      ...JSON.parse(readFileSync("data/state.json", "utf8")).studioData,
+      catalog: [
+        { id: "keep-1", title: "Остаётся" },
+        { id: "gone-1", title: "Удаляемый" },
+      ],
+    }),
+  });
+
+  const stale = openDevice();
+  await sleep(3000);
+  const staleCache = stale.w.localStorage.getItem("f304lteam_studio_data_v1") || "";
+  ok("устройство 2 сначала видит оба проекта", staleCache.includes("Удаляемый"));
+
+  // админ удаляет проект (как в админке: новый каталог без него)
+  const before = await (await fetch(`${BASE}/api/data`)).json();
+  await fetch(`${BASE}/api/data`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Origin: BASE },
+    body: JSON.stringify({
+      ...before.data,
+      catalog: before.data.catalog.filter((c) => c.id !== "gone-1"),
+    }),
+  });
+
+  const fresh = openDevice();
+  await sleep(3000);
+  const freshText = (fresh.w.document.getElementById("root").textContent || "").replace(/\s+/g, " ");
+  ok("новое устройство не видит удалённый проект", !freshText.includes("Удаляемый"));
+  ok(
+    "новое устройство видит оставшийся проект",
+    (fresh.w.localStorage.getItem("f304lteam_studio_data_v1") || "").includes("Остаётся")
+  );
+  fresh.w.close();
+  stale.w.close();
 } finally {
   try {
     process.kill(-server.pid, "SIGTERM");
@@ -172,8 +212,8 @@ try {
   ok("сервер перезапущен", await waitReady());
   const catalog = await serverCatalog();
   ok(
-    "после перезапуска правка на месте",
-    catalog.length === 1 && catalog[0]?.title === "Проверка общей базы",
+    "после перезапуска удаление сохранилось",
+    !catalog.some((c) => c.title === "Удаляемый") && catalog.some((c) => c.title === "Остаётся"),
     catalog.map((c) => c.title).join(", ") || "пусто"
   );
 } finally {

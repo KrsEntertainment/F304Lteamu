@@ -12,7 +12,8 @@
     "test:smoke": "npm run build && node scripts/smoke.mjs",
     "start": "deno run -A --unstable-kv main.ts",
     "test:server": "node scripts/e2e-server.mjs",
-    "test:app": "node scripts/e2e-app.mjs"
+    "test:app": "node scripts/e2e-app.mjs",
+    "test:merge": "node scripts/merge-test.mjs"
   },
   "dependencies": {
     "clsx": "2.1.1",
@@ -27,8 +28,9 @@
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.1",
+    "jsdom": "^31.0.1",
     "tailwindcss": "4.1.17",
-    "typescript": "5.9.3",
+    "typescript": "^5.9.3",
     "vite": "7.3.7",
     "vite-plugin-singlefile": "2.3.0"
   }
