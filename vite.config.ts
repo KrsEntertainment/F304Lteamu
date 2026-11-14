@@ -8,8 +8,14 @@ import { viteSingleFile } from "vite-plugin-singlefile";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Базовый путь сборки. По умолчанию "./" — относительные ссылки, поэтому
+// собранный dist работает и в корне домена, и в подпапке (GitHub Pages),
+// и при открытии как обычный файл. Задать жёстко: BASE_PATH=/repo/
+const base = process.env.BASE_PATH || "./";
+
 // https://vite.dev/config/
 export default defineConfig({
+  base,
   plugins: [react(), tailwindcss(), viteSingleFile()],
   resolve: {
     alias: {
@@ -22,10 +28,6 @@ export default defineConfig({
     strictPort: true,
     // Разрешаем запросы через preview-домен песочницы (*.e2b.app)
     allowedHosts: true,
-    hmr: {
-      clientPort: 443,
-      protocol: "wss",
-    },
   },
   preview: {
     host: "0.0.0.0",

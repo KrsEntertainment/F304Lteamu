@@ -17,6 +17,7 @@ import {
   Smartphone,
 } from 'lucide-react';
 import { STUDIO_FAQS, STUDIO_PLANS, STUDIO_TESTIMONIALS } from '../data/initialData';
+import { assetUrl } from '../utils/asset';
 
 export const RevealBlock: React.FC<{
   children: React.ReactNode;
@@ -254,7 +255,7 @@ export const LandingSections: React.FC<LandingSectionsProps> = ({
           <div className="lg:col-span-6 relative">
             <div className="relative overflow-hidden rounded-2xl border border-white/15 shadow-[0_25px_70px_rgba(0,0,0,0.8)]">
               <img
-                src="/images/news-backstage.jpg"
+                src={assetUrl("/images/news-backstage.jpg")}
                 alt="Съёмочная площадка F304Lteam"
                 className="w-full h-[320px] sm:h-[420px] object-cover"
               />

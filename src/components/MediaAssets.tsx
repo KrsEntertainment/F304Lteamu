@@ -1,9 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Image as ImageIcon, Film, Upload, X, Link2, CheckCircle2, Loader2 } from 'lucide-react';
 import { resolveMediaUrl, saveGalleryFile, isIdbRef } from '../utils/mediaStore';
+import { assetUrl } from '../utils/asset';
 
 export function useMediaUrl(ref?: string): string {
-  const [resolved, setResolved] = useState<string>(() => (ref && !isIdbRef(ref) ? ref : ''));
+  const [resolved, setResolved] = useState<string>(() =>
+    ref && !isIdbRef(ref) ? assetUrl(ref) : ''
+  );
 
   useEffect(() => {
     let active = true;
@@ -12,7 +15,7 @@ export function useMediaUrl(ref?: string): string {
       return;
     }
     if (!isIdbRef(ref)) {
-      setResolved(ref);
+      setResolved(assetUrl(ref));
       return;
     }
     resolveMediaUrl(ref).then((url) => {
