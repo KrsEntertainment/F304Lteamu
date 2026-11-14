@@ -17,15 +17,39 @@ const STATE_PATH = "data/state.json";
 const TOKEN_KEY = "f304lteam_gh_token_v1";
 const API_KEY = "f304lteam_gh_backend_v1"; // "github" | "server"
 
-// Публичный URL файла состояния: сначала Pages (там state.json публикуется),
-// затем ветка репозитория — чтобы данные были доступны всегда.
-// raw.githubusercontent отдаёт актуальную версию сразу после записи через API,
-// поэтому он первый; копия на Pages — резерв (и стартовое состояние).
-const RAW_URLS = [
-  `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/main/${STATE_PATH}`,
-  `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${BRANCH_CANDIDATES[0]}/${STATE_PATH}`,
-  `https://krsentertainment.github.io/${GH_REPO}/state.json`,
+// Источники состояния, по порядку. Важно: почти во всех случаях первый —
+// свой же домен (./state.json рядом с index.html). Никаких внешних CDN:
+// в России raw.githubusercontent.com и api.github.com бывают недоступны,
+// а собственный домен сайта работает всегда, если открылся сам сайт.
+const JS_BRANCH = BRANCH_CANDIDATES[0].replace(/\//g, "%2F");
+const CDN_URLS = [
+  `https://cdn.jsdelivr.net/gh/${GH_OWNER}/${GH_REPO}@gh-pages/state.json`,
+  `https://cdn.jsdelivr.net/gh/${GH_OWNER}/${GH_REPO}@${JS_BRANCH}/${STATE_PATH}`,
 ];
+
+function sameOriginUrl(): string | null {
+  if (typeof location === "undefined" || !location.protocol.startsWith("http")) return null;
+  return "./state.json";
+}
+
+function stateUrls(): string[] {
+  const urls: string[] = [];
+  const local = sameOriginUrl();
+  if (local) urls.push(local);
+  urls.push(...CDN_URLS);
+  urls.push(
+    `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${BRANCH_CANDIDATES[0]}/${STATE_PATH}`,
+    `https://krsentertainment.github.io/${GH_REPO}/state.json`
+  );
+  return urls;
+}
+
+/** Резервный источник картинок: если Pages не открывается, берём CDN */
+export function cdnFallbackUrl(url: string): string | null {
+  const m = url.match(/(?:^|\.\/)\/?(images|uploads)\/(.+)$/);
+  if (!m) return null;
+  return `https://cdn.jsdelivr.net/gh/${GH_OWNER}/${GH_REPO}@gh-pages/${m[1]}/${m[2]}`;
+}
 
 export interface GhState {
   version: number;
@@ -72,7 +96,7 @@ const CACHE_MS = 15_000;
 export async function readGhState(force = false): Promise<GhState> {
   if (!force && cache && Date.now() - cache.fetchedAt < CACHE_MS) return cache.state;
 
-  for (const url of RAW_URLS) {
+  for (const url of stateUrls()) {
     try {
       const res = await fetch(`${url}?t=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) continue;
@@ -238,7 +262,44 @@ export async function writeGhState(
   }
 
   cache = { state: next, fetchedAt: Date.now() };
+  // Дублируем в публичную копию на сайте, чтобы другие устройства увидели
+  // изменения сразу, без ожидания пересборки Pages.
+  await writePublicCopy(next);
   return next;
+}
+
+/**
+ * Публичная копия состояния на ветке gh-pages.
+ * Именно её читают браузеры с домена сайта (./state.json), поэтому она
+ * обновляется без пересборки сайта — достаточно одного коммита в gh-pages.
+ */
+async function writePublicCopy(state: GhState): Promise<void> {
+  const body = JSON.stringify(state, null, 2) + "\n";
+  const api = (path = "") =>
+    `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/state.json${path}`;
+  const headers = {
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${getGhToken()}`,
+    "X-GitHub-Api-Version": "2022-11-28",
+    "Content-Type": "application/json",
+  };
+  try {
+    const head = await fetch(`${api(`?ref=${MEDIA_BRANCH}`)}`, { headers });
+    const sha = head.ok ? ((await head.json()) as { sha?: string }).sha : undefined;
+    await fetch(api(), {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({
+        message: `data: ${state.reason || "update"}`,
+        content: encodeBase64Utf8(body),
+        branch: MEDIA_BRANCH,
+        ...(sha ? { sha } : {}),
+      }),
+    });
+  } catch {
+    // Не критично: авторитетная копия всё равно записана, публичная обновится
+    // при следующей публикации сайта (./scripts/publish-pages.sh).
+  }
 }
 
 /** Проверка токена и прав на репозиторий */
