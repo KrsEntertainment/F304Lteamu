@@ -55,10 +55,10 @@ import {
   readLocalData,
   readLocalList,
   readLocalProgress,
+  syncAvailable,
   writeLocalData,
   writeLocalList,
 } from './utils/sync';
-import { hasApi } from './utils/api';
 
 const STORAGE_MYLIST_KEY = 'f304lteam_mylist_v1';
 
@@ -134,7 +134,7 @@ export default function App() {
   }, []);
 
   // ---------------------------------------------------------------- синхронизация
-  const [syncOnline, setSyncOnline] = useState(hasApi());
+  const [syncOnline, setSyncOnline] = useState(syncAvailable());
   const [syncing, setSyncing] = useState(false);
 
   // Данные с сервера имеют приоритет; локальные правки уходят на сервер
@@ -164,7 +164,7 @@ export default function App() {
       const result = await pullData(loadInitialData());
       if (!alive) return;
       if (result.data) applyRemote(result.data);
-      setSyncOnline(result.fromServer || hasApi());
+      setSyncOnline(result.fromServer || syncAvailable());
       const userState = await pullUserState();
       if (!alive) return;
       if (userState.list) setMyList(userState.list);
@@ -180,7 +180,7 @@ export default function App() {
 
   // Опрос сервера: изменения, сделанные с другого устройства
   useEffect(() => {
-    if (!hasApi()) return;
+    if (!syncAvailable()) return;
     const tick = async () => {
       if (document.hidden) return;
       const remote = await pullIfChanged();

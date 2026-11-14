@@ -1,14 +1,27 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle2, Cloud, CloudOff, Loader2, RefreshCw, Server, UploadCloud, XCircle } from 'lucide-react';
 import {
-  api,
-  getAdminToken,
-  getApiBase,
-  getUserId,
-  setAdminToken,
-  setApiBase,
-} from '../utils/api';
-import { pushData } from '../utils/sync';
+  CheckCircle2,
+  Cloud,
+  CloudOff,
+  GitBranch,
+  Info,
+  KeyRound,
+  Loader2,
+  RefreshCw,
+  Server,
+  UploadCloud,
+  XCircle,
+} from 'lucide-react';
+import { api, getAdminToken, getApiBase, getUserId, setAdminToken, setApiBase } from '../utils/api';
+import { pushData, pullIfChanged } from '../utils/sync';
+import {
+  checkGhAccess,
+  getBackendMode,
+  getGhToken,
+  readGhState,
+  setBackendMode,
+  setGhToken,
+} from '../utils/githubStore';
 import { StudioData } from '../types';
 
 interface ServerSyncPanelProps {
@@ -17,69 +30,154 @@ interface ServerSyncPanelProps {
   onReload?: () => void;
 }
 
+type Status = 'idle' | 'checking' | 'ok' | 'fail';
+
 export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({
   data,
   onNotify,
   onReload,
 }) => {
+  const [mode, setMode] = useState<'github' | 'server'>(getBackendMode());
+  const [ghToken, setGhTokenState] = useState(getGhToken());
   const [apiBase, setApiBaseState] = useState(getApiBase());
   const [token, setToken] = useState(getAdminToken());
-  const [status, setStatus] = useState<'idle' | 'checking' | 'ok' | 'fail'>('idle');
-  const [message, setMessage] = useState('');
-  const [details, setDetails] = useState<{ updatedAt?: number; uptime?: number }>({});
-  const [pushing, setPushing] = useState(false);
 
-  const runCheck = async () => {
+  const [status, setStatus] = useState<Status>('idle');
+  const [message, setMessage] = useState('');
+  const [account, setAccount] = useState('');
+  const [remoteInfo, setRemoteInfo] = useState<{ updatedAt: number; items: number; users: number } | null>(
+    null
+  );
+  const [busy, setBusy] = useState(false);
+
+  const checkGithub = async () => {
+    setStatus('checking');
+    setMessage('');
+    try {
+      const state = await readGhState(true);
+      setRemoteInfo({
+        updatedAt: state.updatedAt,
+        items: state.studioData?.catalog?.length || 0,
+        users: Object.keys(state.lists).length,
+      });
+      if (ghToken.trim()) {
+        const access = await checkGhAccess();
+        setAccount(access.login);
+        if (!access.canWrite) throw new Error('У токена нет права Contents: Read and write');
+        setStatus('ok');
+        setMessage(
+          state.studioData
+            ? 'Данные читаются из репозитория. Запись с этого устройства разрешена.'
+            : 'Репозиторий доступен. Данных ещё нет — нажмите «Отправить каталог».'
+        );
+      } else {
+        setStatus('ok');
+        setMessage('Данные читаются из репозитория. Для записи вставьте GitHub-токен.');
+      }
+    } catch (err) {
+      setStatus('fail');
+      setMessage(err instanceof Error ? err.message : 'GitHub недоступен');
+    }
+  };
+
+  const checkServer = async () => {
     setStatus('checking');
     setMessage('');
     try {
       const health = await api.health();
-      setDetails({ updatedAt: health.updatedAt, uptime: health.uptimeSeconds });
-      if (token.trim()) {
-        await api.checkAdmin();
-        setStatus('ok');
-        if (!health.hasData) {
-          await pushData(data);
-          setMessage('Сервер был пуст — текущий каталог загружен на него. Теперь его видят все устройства.');
-        } else {
-          setMessage('Сервер доступен, токен админки принят. Данные синхронизируются.');
-        }
-      } else {
-        setStatus('ok');
-        setMessage('Сервер доступен. Для записи каталога введите токен админки.');
-      }
+      setRemoteInfo({ updatedAt: health.updatedAt, items: 0, users: 0 });
+      if (token.trim()) await api.checkAdmin();
+      setStatus('ok');
+      setMessage('Сервер доступен. Данные синхронизируются.');
     } catch (err) {
       setStatus('fail');
       setMessage(err instanceof Error ? err.message : 'Сервер не отвечает');
     }
   };
 
+  const check = () => (mode === 'github' ? checkGithub() : checkServer());
+
   useEffect(() => {
-    void runCheck();
+    void check();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [mode]);
 
   const handleSave = async () => {
+    setBackendMode(mode);
+    setGhToken(ghToken.trim());
     setApiBase(apiBase.trim());
     setAdminToken(token.trim());
-    await runCheck();
-    onNotify('Настройки сервера сохранены');
+    await check();
+    onNotify('Настройки синхронизации сохранены');
   };
 
   return (
     <div className="space-y-6">
+      {/* Выбор хранилища */}
+      <div className="rounded-2xl border border-white/10 bg-[#0E0F16] p-5">
+        <h3 className="font-display text-base font-bold text-white">Где хранить общие данные</h3>
+        <p className="mt-1 text-xs text-zinc-400">
+          Один источник для всех устройств: телефон, ноутбук, планшет видят одно и то же.
+        </p>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {[
+            {
+              id: 'github' as const,
+              icon: GitBranch,
+              title: 'GitHub-репозиторий',
+              text: 'Без серверов и оплаты. Данные в data/state.json, сайт на GitHub Pages.',
+            },
+            {
+              id: 'server' as const,
+              icon: Server,
+              title: 'Свой API-сервер',
+              text: 'server/index.mjs (Docker/Render/VPS). Нужен хостинг.',
+            },
+          ].map((option) => {
+            const Icon = option.icon;
+            const active = mode === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => setMode(option.id)}
+                className={`rounded-xl border p-3.5 text-left transition-colors ${
+                  active
+                    ? 'border-[#E50914]/60 bg-[#E50914]/10'
+                    : 'border-white/10 bg-white/[0.02] hover:border-white/25'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Icon className={`h-4 w-4 ${active ? 'text-[#E50914]' : 'text-zinc-400'}`} />
+                  <span className="text-sm font-bold text-white">{option.title}</span>
+                  {active && (
+                    <span className="ml-auto rounded-full bg-[#E50914] px-2 py-0.5 text-[9px] font-bold uppercase text-white">
+                      активен
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-400">{option.text}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Настройки выбранного режима */}
       <div className="rounded-2xl border border-white/10 bg-[#0E0F16] p-5">
         <div className="flex items-start gap-3">
           <div className="rounded-xl bg-[#E50914]/15 p-2.5 text-[#E50914]">
-            <Server className="h-5 w-5" />
+            {mode === 'github' ? <GitBranch className="h-5 w-5" /> : <Server className="h-5 w-5" />}
           </div>
           <div className="flex-1">
             <h3 className="font-display text-base font-bold text-white">
-              Общий сервер данных
+              {mode === 'github' ? 'GitHub: репозиторий как база данных' : 'Адрес API и токен'}
             </h3>
             <p className="mt-1 text-xs leading-relaxed text-zinc-400">
-              Каталог, актёры, новости, загруженные файлы, «Мой список» и прогресс просмотра
-              хранятся на сервере. Все устройства видят одно и то же.
+              {mode === 'github'
+                ? 'Чтение — из опубликованного state.json (быстро, без токена). Запись — через GitHub API с вашим токеном.'
+                : 'Сервер отдаёт и сайт, и API. Укажите его адрес, если сайт открыт с другого домена.'}
             </p>
           </div>
           <div className="shrink-0">
@@ -95,43 +193,60 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({
             )}
             {status === 'fail' && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#E50914]/15 px-2.5 py-1 text-[11px] font-semibold text-[#E50914]">
-                <CloudOff className="h-3 w-3" /> Офлайн
+                <CloudOff className="h-3 w-3" /> Ошибка
               </span>
             )}
           </div>
         </div>
 
         <div className="mt-5 space-y-4">
-          <label className="block">
-            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
-              Адрес API
-            </span>
-            <input
-              value={apiBase}
-              onChange={(e) => setApiBaseState(e.target.value)}
-              placeholder="https://f304lteam-api.onrender.com  (пусто = тот же домен)"
-              className="mt-1.5 w-full rounded-xl border border-white/10 bg-[#09090D] px-3 py-2.5 font-mono text-xs text-white outline-none focus:border-[#E50914]/60"
-            />
-            <span className="mt-1 block text-[11px] text-zinc-500">
-              Если сайт и API на одном домене — оставьте поле пустым.
-            </span>
-          </label>
-
-          <label className="block">
-            <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
-              Токен админки
-            </span>
-            <input
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              type="password"
-              placeholder="выводится сервером при первом запуске"
-              className="mt-1.5 w-full rounded-xl border border-white/10 bg-[#09090D] px-3 py-2.5 font-mono text-xs text-white outline-none focus:border-[#E50914]/60"
-            />
-            <span className="mt-1 block text-[11px] text-zinc-500">
-              Нужен для записи контента и загрузки файлов. У зрителей его нет.
-            </span>
-          </label>
+          {mode === 'github' ? (
+            <label className="block">
+              <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                <KeyRound className="h-3.5 w-3.5" /> GitHub-токен (fine-grained)
+              </span>
+              <input
+                value={ghToken}
+                onChange={(e) => setGhTokenState(e.target.value)}
+                type="password"
+                placeholder="github_pat_..."
+                className="mt-1.5 w-full rounded-xl border border-white/10 bg-[#09090D] px-3 py-2.5 font-mono text-xs text-white outline-none focus:border-[#E50914]/60"
+              />
+              <span className="mt-1.5 block text-[11px] leading-relaxed text-zinc-500">
+                Создать: GitHub → Settings → Developer settings → Personal access tokens →
+                Fine-grained tokens → доступ только к репозиторию{' '}
+                <code className="text-zinc-300">KrsEntertainment/F304Lteamu</code>, право{' '}
+                <code className="text-zinc-300">Contents: Read and write</code>. Токен хранится
+                только в этом браузере.
+              </span>
+            </label>
+          ) : (
+            <>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                  Адрес API
+                </span>
+                <input
+                  value={apiBase}
+                  onChange={(e) => setApiBaseState(e.target.value)}
+                  placeholder="https://f304lteam-api.onrender.com (пусто = тот же домен)"
+                  className="mt-1.5 w-full rounded-xl border border-white/10 bg-[#09090D] px-3 py-2.5 font-mono text-xs text-white outline-none focus:border-[#E50914]/60"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                  Токен админки
+                </span>
+                <input
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  type="password"
+                  placeholder="ADMIN_TOKEN сервера"
+                  className="mt-1.5 w-full rounded-xl border border-white/10 bg-[#09090D] px-3 py-2.5 font-mono text-xs text-white outline-none focus:border-[#E50914]/60"
+                />
+              </label>
+            </>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -143,40 +258,50 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({
             </button>
             <button
               type="button"
-              onClick={runCheck}
+              onClick={check}
               className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2.5 text-xs font-semibold text-zinc-200 hover:bg-white/5 transition-colors"
             >
               <RefreshCw className="h-4 w-4" /> Проверить связь
             </button>
             <button
               type="button"
-              disabled={pushing}
+              disabled={busy}
               onClick={async () => {
-                setPushing(true);
+                setBusy(true);
                 try {
                   await pushData(data);
-                  await runCheck();
-                  onNotify('Текущий каталог отправлен на сервер');
+                  await check();
+                  onNotify('Каталог отправлен в репозиторий');
                 } catch (err) {
                   onNotify(err instanceof Error ? err.message : 'Не удалось отправить данные');
                 } finally {
-                  setPushing(false);
+                  setBusy(false);
                 }
               }}
               className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/35 bg-emerald-500/15 px-4 py-2.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25 transition-colors disabled:opacity-60"
             >
-              {pushing ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-              Отправить каталог на сервер
+              {busy ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <UploadCloud className="h-4 w-4" />
+              )}
+              Отправить каталог
             </button>
-            {onReload && (
-              <button
-                type="button"
-                onClick={onReload}
-                className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2.5 text-xs font-semibold text-zinc-200 hover:bg-white/5 transition-colors"
-              >
-                <Cloud className="h-4 w-4" /> Перечитать с сервера
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={async () => {
+                const remote = await pullIfChanged();
+                if (remote) {
+                  onNotify('Данные подтянуты из репозитория');
+                  onReload ? onReload() : window.location.reload();
+                } else {
+                  onNotify('Новых данных в репозитории нет');
+                }
+              }}
+              className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2.5 text-xs font-semibold text-zinc-200 hover:bg-white/5 transition-colors"
+            >
+              <Cloud className="h-4 w-4" /> Перечитать
+            </button>
           </div>
 
           {message && (
@@ -198,34 +323,46 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({
         </div>
       </div>
 
+      {/* Служебная информация */}
       <div className="rounded-2xl border border-white/10 bg-[#0E0F16] p-5">
         <h4 className="font-display text-sm font-bold text-white">Служебная информация</h4>
         <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
           <div className="flex justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
-            <dt className="text-zinc-500">ID этого устройства</dt>
-            <dd className="font-mono text-zinc-300 truncate">{getUserId()}</dd>
+            <dt className="text-zinc-500">Режим</dt>
+            <dd className="font-mono text-zinc-300">
+              {mode === 'github' ? 'GitHub-репозиторий' : 'свой API'}
+            </dd>
+          </div>
+          <div className="flex justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
+            <dt className="text-zinc-500">ID устройства</dt>
+            <dd className="truncate font-mono text-zinc-300">{getUserId()}</dd>
           </div>
           <div className="flex justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
             <dt className="text-zinc-500">Версия данных</dt>
             <dd className="font-mono text-zinc-300">
-              {details.updatedAt
-                ? new Date(details.updatedAt).toLocaleString('ru-RU')
+              {remoteInfo?.updatedAt
+                ? new Date(remoteInfo.updatedAt).toLocaleString('ru-RU')
                 : '—'}
             </dd>
           </div>
           <div className="flex justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
-            <dt className="text-zinc-500">Аптайм сервера</dt>
+            <dt className="text-zinc-500">Релизов в базе</dt>
             <dd className="font-mono text-zinc-300">
-              {details.uptime !== undefined ? `${Math.round(details.uptime / 60)} мин` : '—'}
+              {mode === 'github' ? remoteInfo?.items ?? '—' : '—'}
             </dd>
           </div>
-          <div className="flex justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
-            <dt className="text-zinc-500">Режим</dt>
-            <dd className="font-mono text-zinc-300">
-              {apiBase ? 'внешний API' : 'тот же домен'}
-            </dd>
-          </div>
+          {account && (
+            <div className="flex justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2 sm:col-span-2">
+              <dt className="text-zinc-500">GitHub-аккаунт</dt>
+              <dd className="font-mono text-zinc-300">{account}</dd>
+            </div>
+          )}
         </dl>
+        <p className="mt-3 flex items-start gap-2 text-[11px] leading-relaxed text-zinc-500">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          Устройства опрашивают данные каждые 30 секунд и при возврате на вкладку. Правки,
+          сделанные здесь, применяются сразу; остальные устройства подхватят их автоматически.
+        </p>
       </div>
     </div>
   );

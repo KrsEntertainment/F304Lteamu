@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Публикует свежую сборку в ветку gh-pages (источник GitHub Pages).
-# Использование: ./scripts/publish-pages.sh [remote]
+# Публикует свежую сборку в ветку gh-pages (источник GitHub Pages)
+# вместе с текущим state.json — так данные и сайт всегда синхронны.
 set -euo pipefail
 
 REMOTE="${1:-origin}"
@@ -11,6 +11,7 @@ echo "==> Сборка"
 cd "$REPO_DIR"
 rm -rf dist
 npm run build
+cp data/state.json dist/state.json
 
 echo "==> Готовим ветку gh-pages во временной папке"
 git clone --quiet --depth 1 --branch gh-pages "$(git remote get-url "$REMOTE")" "$TMP_DIR/site"
@@ -24,7 +25,7 @@ if git diff --cached --quiet; then
   echo "==> Изменений нет, публикация не нужна"
   exit 0
 fi
-git -c user.email="bot@arena.ai" -c user.name="Arena Agent" commit -qm "Publish site build $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+git -c user.email="bot@arena.ai" -c user.name="Arena Agent" commit -qm "Publish site + state $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 git push --quiet "$REMOTE" gh-pages
-echo "==> Готово: https://<user>.github.io/<repo>/"
+echo "==> Готово: https://krsentertainment.github.io/F304Lteamu/"
 rm -rf "$TMP_DIR"

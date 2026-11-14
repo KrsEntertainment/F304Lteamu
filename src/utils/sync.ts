@@ -2,7 +2,21 @@
 // Стратегия: сервер — источник правды; клиент опрашивает версию данных
 // и подтягивает изменения (polling), плюс мгновенно пушит свои правки.
 import { api, getAdminToken, getUserId, hasApi, resolveServerUrl } from "./api";
+import {
+  getBackendMode,
+  getGhToken,
+  readGhState,
+  writeGhState,
+} from "./githubStore";
 import { StudioData, WatchProgressItem } from "../types";
+
+/** Режим синхронизации: через репозиторий GitHub (по умолчанию) или свой API */
+export function isGithubMode(): boolean {
+  return getBackendMode() === "github";
+}
+export function syncAvailable(): boolean {
+  return isGithubMode() || hasApi();
+}
 
 const DATA_KEY = "f304lteam_studio_data_v1";
 const MYLIST_KEY = "f304lteam_mylist_v1";
@@ -97,6 +111,30 @@ export interface SyncResult<T> {
  * (только при наличии админ-токена, чтобы зритель не перезаписал каталог).
  */
 export async function pullData(localFallback: StudioData): Promise<SyncResult<StudioData>> {
+  if (isGithubMode()) {
+    try {
+      const state = await readGhState();
+      if (state.studioData) {
+        const normalized = normalizeUrls(state.studioData);
+        writeLocalData(normalized);
+        localStorage.setItem(LOCAL_VERSION_KEY, String(state.updatedAt));
+        return { data: normalized, updatedAt: state.updatedAt, fromServer: true };
+      }
+      // В репозитории данных ещё нет — публикуем локальные, если есть токен
+      if (getGhToken()) {
+        const saved = await writeGhState(
+          (current) => ({ ...current, studioData: localFallback }),
+          "initial catalog upload"
+        );
+        localStorage.setItem(LOCAL_VERSION_KEY, String(saved.updatedAt));
+        return { data: localFallback, updatedAt: saved.updatedAt, fromServer: true };
+      }
+      return { data: localFallback, updatedAt: 0, fromServer: false };
+    } catch {
+      return { data: localFallback, updatedAt: 0, fromServer: false };
+    }
+  }
+
   if (!hasApi()) return { data: localFallback, updatedAt: 0, fromServer: false };
 
   try {
@@ -123,6 +161,15 @@ export async function pullData(localFallback: StudioData): Promise<SyncResult<St
 
 /** Проверить, изменилось ли что-то на сервере (лёгкий запрос) */
 export async function checkVersion(): Promise<number | null> {
+  if (isGithubMode()) {
+    try {
+      const state = await readGhState(true);
+      const localVersion = Number(localStorage.getItem(LOCAL_VERSION_KEY) || 0);
+      return state.updatedAt > localVersion ? state.updatedAt : null;
+    } catch {
+      return null;
+    }
+  }
   if (!hasApi()) return null;
   try {
     const { updatedAt } = await api.getVersion();
@@ -136,6 +183,16 @@ export async function checkVersion(): Promise<number | null> {
 export async function pullIfChanged(): Promise<StudioData | null> {
   const newVersion = await checkVersion();
   if (newVersion === null) return null;
+
+  if (isGithubMode()) {
+    const state = await readGhState(true);
+    if (!state.studioData) return null;
+    const normalized = normalizeUrls(state.studioData);
+    writeLocalData(normalized);
+    localStorage.setItem(LOCAL_VERSION_KEY, String(state.updatedAt));
+    return normalized;
+  }
+
   try {
     const remote = await api.getData<StudioData>();
     if (!remote.data) return null;
@@ -150,6 +207,15 @@ export async function pullIfChanged(): Promise<StudioData | null> {
 
 /** Отправить контент студии на сервер (только админ) */
 export async function pushData(data: StudioData): Promise<number | null> {
+  if (isGithubMode()) {
+    if (!getGhToken()) return null;
+    const saved = await writeGhState(
+      (current) => ({ ...current, studioData: data }),
+      "studio catalog update"
+    );
+    localStorage.setItem(LOCAL_VERSION_KEY, String(saved.updatedAt));
+    return saved.updatedAt;
+  }
   if (!hasApi() || !getAdminToken()) return null;
   const { updatedAt } = await api.saveData(data);
   localStorage.setItem(LOCAL_VERSION_KEY, String(updatedAt));
@@ -162,6 +228,18 @@ export async function pullUserState(): Promise<{
   list: string[] | null;
   progress: Record<string, WatchProgressItem> | null;
 }> {
+  if (isGithubMode()) {
+    try {
+      const state = await readGhState();
+      const userId = getUserId();
+      const list = state.lists[userId] ?? null;
+      const progress = state.progress[userId] ?? null;
+      if (list) writeLocalList(list);
+      return { list, progress };
+    } catch {
+      return { list: null, progress: null };
+    }
+  }
   if (!hasApi()) return { list: null, progress: null };
   const userId = getUserId();
   const [listRes, progressRes] = await Promise.allSettled([
@@ -175,6 +253,18 @@ export async function pullUserState(): Promise<{
 }
 
 export async function pushList(list: string[]) {
+  if (isGithubMode()) {
+    if (!getGhToken()) return;
+    try {
+      await writeGhState((current) => {
+        const userId = getUserId();
+        return { ...current, lists: { ...current.lists, [userId]: list } };
+      }, "my list update");
+    } catch {
+      /* останется локально */
+    }
+    return;
+  }
   if (!hasApi()) return;
   try {
     await api.saveList(getUserId(), list);
@@ -184,6 +274,20 @@ export async function pushList(list: string[]) {
 }
 
 export async function pushProgress(progress: WatchProgressItem) {
+  if (isGithubMode()) {
+    if (!getGhToken()) return;
+    try {
+      await writeGhState((current) => {
+        const userId = getUserId();
+        const userProgress = { ...(current.progress[userId] || {}) };
+        userProgress[progress.itemId] = progress;
+        return { ...current, progress: { ...current.progress, [userId]: userProgress } };
+      }, "watch progress");
+    } catch {
+      /* останется локально */
+    }
+    return;
+  }
   if (!hasApi()) return;
   try {
     await api.saveProgress(getUserId(), progress);
