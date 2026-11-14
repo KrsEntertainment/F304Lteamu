@@ -1,7 +1,7 @@
 {
-  "version": 1,
-  "updatedAt": 1794682089433,
-  "reason": "initial catalog",
+  "version": 2,
+  "updatedAt": 1794683812119,
+  "reason": "delete title (test)",
   "studioData": {
     "settings": {
       "announcementText": "ПРЕМЬЕРА СЕЗОНА: «Ночной код 304» — все серии первого сезона уже в каталоге 4K HDR",
