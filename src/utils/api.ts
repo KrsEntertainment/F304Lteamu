@@ -1,20 +1,30 @@
 // Клиент API F304Lteam: единый источник данных для всех устройств.
 //
 // Базовый URL:
-//   - если задан VITE_API_URL (при сборке) — используем его;
+//   - адрес общего сервера задан в одном месте (SERVER_URL) и одинаков для всех
+//     устройств: менять в браузере ничего не нужно;
+//   - если сборка сделана с VITE_API_URL — он имеет приоритет;
 //   - если сайт открыт с того же сервера, что и API — относительный "/api";
-//   - для GitHub Pages (нет своего бэкенда) — берём адрес из localStorage,
-//     который администратор вводит в админке.
+//   - ручной адрес из настроек остаётся только как аварийный override.
 const API_KEY = "f304lteam_api_base_v1";
 const TOKEN_KEY = "f304lteam_admin_token_v1";
 const USER_KEY = "f304lteam_user_id_v1";
 
 const ENV_BASE = (import.meta.env.VITE_API_URL as string | undefined) || "";
 
+/**
+ * Адрес общего сервера студии (Deno Deploy + Deno KV).
+ * Один на весь проект: правится здесь или через VITE_API_URL при сборке.
+ * Пока значение пустое, сайт работает на одном домене с API (если сервер
+ * отдаёт и сайт, и /api) — это основной режим.
+ */
+export const SERVER_URL: string = "";
+
 export function getApiBase(): string {
   const stored = localStorage.getItem(API_KEY);
   if (stored) return stored.replace(/\/$/, "");
   if (ENV_BASE) return ENV_BASE.replace(/\/$/, "");
+  if (SERVER_URL) return SERVER_URL.replace(/\/$/, "");
   // На том же origin, что и сайт (сервер отдаёт и статику, и API)
   if (typeof location !== "undefined" && location.protocol.startsWith("http")) {
     return "";
@@ -36,6 +46,7 @@ export function hasApi(): boolean {
 
 // ------------------------------------------------------------- админ-токен
 
+/** PIN админки (по умолчанию 9086) — используется как ключ записи на сервере */
 export function getAdminToken(): string {
   return localStorage.getItem(TOKEN_KEY) || "";
 }
@@ -73,8 +84,8 @@ async function request<T>(
     headers.set("Content-Type", "application/json");
   }
   if (admin) {
-    const token = getAdminToken();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
+    // PIN вводится в админке один раз; по умолчанию — стандартный код 9086
+    headers.set("Authorization", `Bearer ${getAdminToken() || "9086"}`);
   }
   const res = await fetch(`${getApiBase()}/api${path}`, { ...init, headers });
   if (!res.ok) {
@@ -98,9 +109,14 @@ export interface RemoteData<T> {
 
 export const api = {
   health: () =>
-    request<{ ok: boolean; hasData: boolean; updatedAt: number; uptimeSeconds: number }>(
-      "/health"
-    ),
+    request<{
+      ok: boolean;
+      hasData: boolean;
+      updatedAt: number;
+      uptimeSeconds: number;
+      storage?: string;
+      hasKv?: boolean;
+    }>("/health"),
 
   getData: <T>() => request<RemoteData<T>>("/data"),
   getVersion: () => request<{ updatedAt: number }>("/data/version"),
@@ -149,8 +165,7 @@ export const api = {
         "POST",
         `${getApiBase()}/api/upload?name=${encodeURIComponent(file.name || "file")}`
       );
-      const token = getAdminToken();
-      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.setRequestHeader("Authorization", `Bearer ${getAdminToken() || "9086"}`);
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
       };

@@ -1,15 +1,11 @@
 // Хранилище медиа.
 //
-// Основной путь: файл уезжает на общий сервер (POST /api/upload) и возвращается
-// как /uploads/<имя> — такую ссылку видят все устройства.
-// Резервный путь (сервер недоступен / нет токена): файл кладётся в IndexedDB
-// этого браузера (idb://...) — используется только локально.
-import { api, getAdminToken, hasApi, resolveServerUrl } from "./api";
-import {
-  getBackendMode,
-  getGhToken,
-  uploadMediaToGithub,
-} from "./githubStore";
+// Файл уезжает на общий сервер (POST /api/upload) и возвращается как
+// /uploads/<имя> — такую ссылку видят все устройства.
+// Если сервер недоступен, файл временно кладётся в IndexedDB этого браузера
+// (idb://...): правка не теряется, но другие устройства увидят её только
+// после успешной загрузки на сервер.
+import { api, getAdminToken, resolveServerUrl } from "./api";
 
 const DB_NAME = "f304lteam_media_db";
 const STORE_NAME = "media_blobs";
@@ -41,10 +37,9 @@ export function isIdbRef(url?: string): boolean {
   return Boolean(url && url.startsWith("idb://"));
 }
 
-/** Есть ли куда загружать файлы (GitHub-режим или свой API с токеном) */
+/** Есть ли куда загружать файлы (общий сервер + вход в админку) */
 export function canUploadToServer(): boolean {
-  if (getBackendMode() === "github") return Boolean(getGhToken());
-  return hasApi() && Boolean(getAdminToken());
+  return Boolean(getAdminToken());
 }
 
 /**
@@ -55,12 +50,6 @@ export async function saveGalleryFile(
   file: File,
   onProgress?: UploadProgress
 ): Promise<string> {
-  // GitHub-режим: файл публикуется в ветку gh-pages -> сразу доступен всем
-  if (getBackendMode() === "github" && getGhToken()) {
-    const result = await uploadMediaToGithub(file, onProgress);
-    return result.ref;
-  }
-
   if (canUploadToServer()) {
     try {
       const result = await api.uploadFile(file, onProgress);
@@ -234,8 +223,8 @@ export function formatBytes(bytes: number): string {
 
 /** Шаблон минимального сервера (для справки в админке) */
 export function generateMinimalServerJs(): string {
-  return `// F304Lteam: полноценный сервер уже в репозитории — ./server/index.mjs
-// Запуск:  PORT=8787 node server/index.mjs
-// Он отдаёт и сайт (dist), и API (/api), и загруженные файлы (/uploads).
+  return `// F304Lteam: сервер студии — ./main.ts (Deno Deploy + Deno KV).
+// Он отдаёт сайт (dist), API (/api) и загруженные файлы (/uploads).
+// Локальный запуск: deno run -A --unstable-kv main.ts
 `;
 }

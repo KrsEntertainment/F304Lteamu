@@ -234,7 +234,7 @@ export const GalleryFilePicker: React.FC<GalleryFilePickerProps> = ({
                   ? isIdbRef(value)
                     ? 'Локальное медиа этого браузера (не видно на других устройствах)'
                     : value.includes('/uploads/')
-                      ? 'В общем хранилище GitHub — видно на всех устройствах'
+                      ? 'В общей базе — видно на всех устройствах'
                       : value
                   : hint ||
                     (canUploadToServer()
@@ -242,8 +242,8 @@ export const GalleryFilePicker: React.FC<GalleryFilePickerProps> = ({
                         ? 'JPG, PNG, WEBP — уедет на общий сервер, будет видно на всех устройствах'
                         : 'MP4, MOV, WEBM — уедет на общий сервер, будет видно на всех устройствах'
                       : accept === 'image'
-                        ? 'JPG, PNG, WEBP из галереи (пока локально: введите токен сервера в админке)'
-                        : 'MP4, MOV, WEBM из галереи (пока локально: введите токен сервера в админке)')}
+                        ? 'JPG, PNG, WEBP из галереи (без связи сохраняются только в этом браузере)'
+                        : 'MP4, MOV, WEBM из галереи (без связи сохраняются только в этом браузере)')}
             </p>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Lock, X, ShieldCheck, Delete, AlertTriangle } from 'lucide-react';
+import { setAdminToken } from '../utils/api';
 
 interface AdminGateModalProps {
   open: boolean;
@@ -27,6 +28,9 @@ export const AdminGateModal: React.FC<AdminGateModalProps> = ({
   const submitPin = (candidate: string) => {
     if (candidate === ADMIN_PASSCODE) {
       setError(false);
+      // PIN — это же и ключ записи на сервере: введя его один раз,
+      // админка сразу получает право сохранять правки в общую базу.
+      setAdminToken(ADMIN_PASSCODE);
       onSuccess();
       setPin('');
     } else {

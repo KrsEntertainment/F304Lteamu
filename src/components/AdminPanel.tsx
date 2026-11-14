@@ -38,7 +38,6 @@ import {
 } from '../types';
 import { AVAILABLE_GENRES } from '../data/initialData';
 import { GalleryFilePicker, MediaImg } from './MediaAssets';
-import { PublishChangesPanel } from './PublishChangesPanel';
 import { ServerSyncPanel } from './ServerSyncPanel';
 import {
   clearAllGalleryMedia,
@@ -143,7 +142,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onNotify,
 }) => {
   const [activeTab, setActiveTab] = useState<AdminTab>('catalog');
-  const [isSyncOpen, setIsSyncOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Editors
@@ -563,7 +561,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               },
               {
                 id: 'sync' as AdminTab,
-                label: 'Публикация изменений',
+                label: 'Сохранение данных',
                 count: null,
                 icon: Server,
               },
@@ -1778,33 +1776,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   Синхронизация устройств
                 </h2>
                 <p className="mt-1 text-xs sm:text-sm text-zinc-400">
-                  Публикация изменений в два клика — без токенов и настроек.
+                  Правки уходят в общую базу автоматически. Токены и настройки не нужны.
                 </p>
               </div>
-
-              <PublishChangesPanel
-                data={data}
-                onNotify={onNotify}
-                onPublished={() => setIsSyncOpen(false)}
-              />
-
-              <button
-                type="button"
-                onClick={() => setIsSyncOpen((v) => !v)}
-                className="mt-4 inline-flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 hover:text-white transition-colors"
-              >
-                {isSyncOpen ? 'Скрыть' : 'Показать'} автозапись через токен (необязательно)
-              </button>
-
-              {isSyncOpen && (
-              <div className="mt-3">
-                <ServerSyncPanel
-                  data={data}
-                  onNotify={onNotify}
-                  onReload={() => window.location.reload()}
-                />
-              </div>
-              )}
+              <ServerSyncPanel data={data} onPulled={() => window.location.reload()} />
             </div>
           )}
 

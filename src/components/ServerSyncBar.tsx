@@ -13,7 +13,7 @@ interface ServerSyncBarProps {
  * Три состояния важны для админа:
  *   saved   — правки лежат в общей базе, их видят все устройства;
  *   saving  — идёт отправка;
- *   unsaved — правка есть только в этом браузере (нет токена или сеть).
+ *   unsaved — правка есть только в этом браузере (нет связи с общей базой).
  */
 export const ServerSyncBar: React.FC<ServerSyncBarProps> = ({
   online,
@@ -34,7 +34,7 @@ export const ServerSyncBar: React.FC<ServerSyncBarProps> = ({
             icon: <AlertTriangle className="h-3 w-3" />,
             text: 'Есть неопубликованные правки',
             cls: 'border-amber-500/40 bg-amber-500/15 text-amber-300',
-            hint: 'Правки сохранены на устройстве. Чтобы их увидели другие: Админка → «Публикация изменений» (2 клика, без токена)',
+            hint: 'Правки сохранены в этом браузере и отправятся в общую базу автоматически, как только появится связь',
           }
         : online
           ? {
@@ -47,7 +47,7 @@ export const ServerSyncBar: React.FC<ServerSyncBarProps> = ({
               icon: <CloudOff className="h-3 w-3" />,
               text: 'Нет связи',
               cls: 'border-white/15 bg-black/70 text-zinc-400',
-              hint: 'Общая база недоступна — показаны локальные данные',
+              hint: 'Общая база недоступна — показаны сохранённые на этом устройстве данные',
             };
 
   return (

@@ -1,27 +1,25 @@
 // Синхронизация состояния между устройствами.
-// Стратегия: сервер — источник правды; клиент опрашивает версию данных
-// и подтягивает изменения (polling), плюс мгновенно пушит свои правки.
-import { api, getAdminToken, getUserId, hasApi, resolveServerUrl } from "./api";
-import {
-  getBackendMode,
-  getGhToken,
-  readGhState,
-  writeGhState,
-} from "./githubStore";
+//
+// Единственный источник правды — общий сервер студии (main.ts на Deno Deploy,
+// хранилище Deno KV). Никаких токенов в браузере: доступ к записи даёт PIN
+// админки, который вводится один раз для входа в админку.
+//
+// Локальные данные (localStorage) — только кеш и страховка на время, пока
+// сервер недоступен. Пока правка не ушла на сервер, она помечена флагом
+// pending и серверная копия её не перетирает.
+import { api, getAdminToken, getUserId, resolveServerUrl } from "./api";
 import { StudioData, WatchProgressItem } from "../types";
 
-/** Режим синхронизации: через репозиторий GitHub (по умолчанию) или свой API */
-export function isGithubMode(): boolean {
-  return getBackendMode() === "github";
-}
+/** Синхронизация доступна, если задан адрес сервера (по умолчанию — свой же домен) */
 export function syncAvailable(): boolean {
-  return isGithubMode() || hasApi();
+  return true;
 }
 
 const DATA_KEY = "f304lteam_studio_data_v1";
 const MYLIST_KEY = "f304lteam_mylist_v1";
 const PROGRESS_KEY = "f304lteam_progress_v1";
 const LOCAL_VERSION_KEY = "f304lteam_data_version_v1";
+const PENDING_KEY = "f304lteam_pending_push_v1";
 
 export const POLL_INTERVAL_MS = 30_000;
 
@@ -75,7 +73,7 @@ export function normalizeUrls(data: StudioData): StudioData {
   const fix = (url: string) => (url?.startsWith("/uploads/") ? resolveServerUrl(url) : url);
   return {
     ...data,
-    catalog: data.catalog.map((item) => ({
+    catalog: (data.catalog || []).map((item) => ({
       ...item,
       poster: fix(item.poster),
       backdrop: fix(item.backdrop),
@@ -90,8 +88,8 @@ export function normalizeUrls(data: StudioData): StudioData {
         })),
       })),
     })),
-    actors: data.actors.map((a) => ({ ...a, photo: fix(a.photo) })),
-    news: data.news.map((n) => ({
+    actors: (data.actors || []).map((a) => ({ ...a, photo: fix(a.photo) })),
+    news: (data.news || []).map((n) => ({
       ...n,
       image: fix(n.image),
       videoUrl: n.videoUrl ? fix(n.videoUrl) : n.videoUrl,
@@ -105,12 +103,7 @@ export interface SyncResult<T> {
   fromServer: boolean;
 }
 
-/**
- * Первичная синхронизация при открытии страницы.
- * Если на сервере данных ещё нет, а локально они есть — загружаем локальные
- * (только при наличии админ-токена, чтобы зритель не перезаписал каталог).
- */
-const PENDING_KEY = "f304lteam_pending_push_v1";
+// ------------------------------------------------------------- pending flag
 
 /** Пометить правку как ещё не отправленную на сервер */
 export function markPending(flag: boolean) {
@@ -130,38 +123,23 @@ export function hasPending(): boolean {
   }
 }
 
+/** Есть ли право записи: PIN админки (введён при входе в админку) */
+export function canWriteRemote(): boolean {
+  return Boolean(getAdminToken());
+}
+
+// ------------------------------------------------------------------- чтение
+
+/**
+ * Первичная синхронизация при открытии страницы.
+ * Сервер — главный источник. Если на сервере данных ещё нет, а локально они
+ * есть, и это устройство админа (введён PIN) — отправляем локальные наверх.
+ */
 export async function pullData(localFallback: StudioData): Promise<SyncResult<StudioData>> {
-  // Если на этом устройстве есть неотправленные правки — они важнее
-  // серверной копии: иначе перезагрузка страницы откатит работу админа.
+  // Неотправленные правки важнее серверной копии
   if (hasPending()) {
     return { data: localFallback, updatedAt: 0, fromServer: false };
   }
-
-  if (isGithubMode()) {
-    try {
-      const state = await readGhState();
-      if (state.studioData) {
-        const normalized = normalizeUrls(state.studioData);
-        writeLocalData(normalized);
-        localStorage.setItem(LOCAL_VERSION_KEY, String(state.updatedAt));
-        return { data: normalized, updatedAt: state.updatedAt, fromServer: true };
-      }
-      // В репозитории данных ещё нет — публикуем локальные, если есть токен
-      if (getGhToken()) {
-        const saved = await writeGhState(
-          (current) => ({ ...current, studioData: localFallback }),
-          "initial catalog upload"
-        );
-        localStorage.setItem(LOCAL_VERSION_KEY, String(saved.updatedAt));
-        return { data: localFallback, updatedAt: saved.updatedAt, fromServer: true };
-      }
-      return { data: localFallback, updatedAt: 0, fromServer: false };
-    } catch {
-      return { data: localFallback, updatedAt: 0, fromServer: false };
-    }
-  }
-
-  if (!hasApi()) return { data: localFallback, updatedAt: 0, fromServer: false };
 
   try {
     const remote = await api.getData<StudioData>();
@@ -172,31 +150,21 @@ export async function pullData(localFallback: StudioData): Promise<SyncResult<St
       return { data: normalized, updatedAt: remote.updatedAt, fromServer: true };
     }
 
-    // Сервер пуст: отправляем локальную версию, если есть права админа
-    if (getAdminToken()) {
+    // Сервер пуст: заливаем стартовые данные, только если есть права записи
+    if (canWriteRemote()) {
       const saved = await api.saveData(localFallback);
       localStorage.setItem(LOCAL_VERSION_KEY, String(saved.updatedAt));
       return { data: localFallback, updatedAt: saved.updatedAt, fromServer: true };
     }
     return { data: localFallback, updatedAt: 0, fromServer: false };
   } catch {
-    // Сеть недоступна — работаем на локальных данных
+    // Сервер недоступен — показываем локальные данные
     return { data: localFallback, updatedAt: 0, fromServer: false };
   }
 }
 
 /** Проверить, изменилось ли что-то на сервере (лёгкий запрос) */
 export async function checkVersion(): Promise<number | null> {
-  if (isGithubMode()) {
-    try {
-      const state = await readGhState(true);
-      const localVersion = Number(localStorage.getItem(LOCAL_VERSION_KEY) || 0);
-      return state.updatedAt > localVersion ? state.updatedAt : null;
-    } catch {
-      return null;
-    }
-  }
-  if (!hasApi()) return null;
   try {
     const { updatedAt } = await api.getVersion();
     const localVersion = Number(localStorage.getItem(LOCAL_VERSION_KEY) || 0);
@@ -208,18 +176,7 @@ export async function checkVersion(): Promise<number | null> {
 
 export async function pullIfChanged(): Promise<StudioData | null> {
   if (hasPending()) return null; // сначала нужно отправить свои правки
-  const newVersion = await checkVersion();
-  if (newVersion === null) return null;
-
-  if (isGithubMode()) {
-    const state = await readGhState(true);
-    if (!state.studioData) return null;
-    const normalized = normalizeUrls(state.studioData);
-    writeLocalData(normalized);
-    localStorage.setItem(LOCAL_VERSION_KEY, String(state.updatedAt));
-    return normalized;
-  }
-
+  if ((await checkVersion()) === null) return null;
   try {
     const remote = await api.getData<StudioData>();
     if (!remote.data) return null;
@@ -232,30 +189,33 @@ export async function pullIfChanged(): Promise<StudioData | null> {
   }
 }
 
-/** Есть ли право записи (токен GitHub либо токен своего API) */
-export function canWriteRemote(): boolean {
-  return isGithubMode() ? Boolean(getGhToken()) : Boolean(getAdminToken());
-}
+// ------------------------------------------------------------------- запись
 
 /** Отправить контент студии на сервер (только админ) */
 export async function pushData(data: StudioData): Promise<number | null> {
   if (!canWriteRemote()) {
-    throw new Error("Нет токена для записи — правки сохранены только на этом устройстве");
+    throw new Error("Войдите в админку — правки сохранятся в общей базе");
   }
   markPending(true);
-  if (isGithubMode()) {
-    const saved = await writeGhState(
-      (current) => ({ ...current, studioData: data }),
-      "studio catalog update"
-    );
-    localStorage.setItem(LOCAL_VERSION_KEY, String(saved.updatedAt));
+  try {
+    const { updatedAt } = await api.saveData(data);
+    localStorage.setItem(LOCAL_VERSION_KEY, String(updatedAt));
     markPending(false);
-    return saved.updatedAt;
+    return updatedAt;
+  } catch (err) {
+    // правка остаётся в локальном кеше и будет отправлена повторно
+    throw err;
   }
-  const { updatedAt } = await api.saveData(data);
-  localStorage.setItem(LOCAL_VERSION_KEY, String(updatedAt));
-  markPending(false);
-  return updatedAt;
+}
+
+/** Проверка связи с сервером (для индикатора и панели админки) */
+export async function pingServer(): Promise<{ ok: boolean; updatedAt?: number; storage?: string }> {
+  try {
+    const health = await api.health();
+    return { ok: Boolean(health?.ok), updatedAt: health?.updatedAt, storage: health?.storage };
+  } catch {
+    return { ok: false };
+  }
 }
 
 // ------------------------- зрительские данные (список и прогресс)
@@ -264,19 +224,6 @@ export async function pullUserState(): Promise<{
   list: string[] | null;
   progress: Record<string, WatchProgressItem> | null;
 }> {
-  if (isGithubMode()) {
-    try {
-      const state = await readGhState();
-      const userId = getUserId();
-      const list = state.lists[userId] ?? null;
-      const progress = state.progress[userId] ?? null;
-      if (list) writeLocalList(list);
-      return { list, progress };
-    } catch {
-      return { list: null, progress: null };
-    }
-  }
-  if (!hasApi()) return { list: null, progress: null };
   const userId = getUserId();
   const [listRes, progressRes] = await Promise.allSettled([
     api.getList(userId),
@@ -289,19 +236,6 @@ export async function pullUserState(): Promise<{
 }
 
 export async function pushList(list: string[]) {
-  if (isGithubMode()) {
-    if (!getGhToken()) return;
-    try {
-      await writeGhState((current) => {
-        const userId = getUserId();
-        return { ...current, lists: { ...current.lists, [userId]: list } };
-      }, "my list update");
-    } catch {
-      /* останется локально */
-    }
-    return;
-  }
-  if (!hasApi()) return;
   try {
     await api.saveList(getUserId(), list);
   } catch {
@@ -310,21 +244,6 @@ export async function pushList(list: string[]) {
 }
 
 export async function pushProgress(progress: WatchProgressItem) {
-  if (isGithubMode()) {
-    if (!getGhToken()) return;
-    try {
-      await writeGhState((current) => {
-        const userId = getUserId();
-        const userProgress = { ...(current.progress[userId] || {}) };
-        userProgress[progress.itemId] = progress;
-        return { ...current, progress: { ...current.progress, [userId]: userProgress } };
-      }, "watch progress");
-    } catch {
-      /* останется локально */
-    }
-    return;
-  }
-  if (!hasApi()) return;
   try {
     await api.saveProgress(getUserId(), progress);
   } catch {

@@ -235,7 +235,7 @@ export default function App() {
     pushTimerRef.current = window.setTimeout(async () => {
       if (!canWriteRemote()) {
         setSaveState('unsaved');
-        notify('Изменения сохранены на устройстве. Чтобы их увидели другие — Админка → «Публикация изменений»');
+        notify('Правки сохранены на устройстве. Войдите в админку по PIN — и они уйдут в общую базу');
         return;
       }
       try {
@@ -505,7 +505,7 @@ export default function App() {
       [progress.itemId]: progress,
     }));
     // Отправляем на сервер, чтобы продолжить просмотр на другом устройстве.
-    // Троттлинг: не чаще раза в 20 секунд на релиз (иначе спамим GitHub-коммитами).
+    // Троттлинг: не чаще раза в 20 секунд на релиз, чтобы не заваливать сервер.
     const last = lastProgressPushRef.current[progress.itemId] || 0;
     if (Date.now() - last > 20_000) {
       lastProgressPushRef.current[progress.itemId] = Date.now();
