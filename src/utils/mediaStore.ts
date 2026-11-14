@@ -5,6 +5,11 @@
 // Резервный путь (сервер недоступен / нет токена): файл кладётся в IndexedDB
 // этого браузера (idb://...) — используется только локально.
 import { api, getAdminToken, hasApi, resolveServerUrl } from "./api";
+import {
+  getBackendMode,
+  getGhToken,
+  uploadMediaToGithub,
+} from "./githubStore";
 
 const DB_NAME = "f304lteam_media_db";
 const STORE_NAME = "media_blobs";
@@ -36,8 +41,9 @@ export function isIdbRef(url?: string): boolean {
   return Boolean(url && url.startsWith("idb://"));
 }
 
-/** Можно ли грузить файл на сервер (онлайн + есть токен админки) */
+/** Есть ли куда загружать файлы (GitHub-режим или свой API с токеном) */
 export function canUploadToServer(): boolean {
+  if (getBackendMode() === "github") return Boolean(getGhToken());
   return hasApi() && Boolean(getAdminToken());
 }
 
@@ -49,6 +55,12 @@ export async function saveGalleryFile(
   file: File,
   onProgress?: UploadProgress
 ): Promise<string> {
+  // GitHub-режим: файл публикуется в ветку gh-pages -> сразу доступен всем
+  if (getBackendMode() === "github" && getGhToken()) {
+    const result = await uploadMediaToGithub(file, onProgress);
+    return result.ref;
+  }
+
   if (canUploadToServer()) {
     try {
       const result = await api.uploadFile(file, onProgress);

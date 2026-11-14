@@ -111,7 +111,9 @@ export const GalleryFilePicker: React.FC<GalleryFilePickerProps> = ({
       const savedRef = await saveGalleryFile(file, setUploadPercent);
       onChange(savedRef);
       const mb = (file.size / (1024 * 1024)).toFixed(1);
-      const where = savedRef.startsWith('/uploads/') ? 'на сервер' : 'локально';
+      const where = savedRef.startsWith('/uploads/') || savedRef.includes('/uploads/')
+        ? 'в общее хранилище'
+        : 'локально';
       setFileMeta(`${file.name} (${mb} МБ) — загружено ${where}`);
     } finally {
       setUploading(false);
@@ -230,8 +232,8 @@ export const GalleryFilePicker: React.FC<GalleryFilePickerProps> = ({
                 : value
                   ? isIdbRef(value)
                     ? 'Локальное медиа этого браузера (не видно на других устройствах)'
-                    : value.startsWith('/uploads/')
-                      ? `На сервере: ${value}`
+                    : value.includes('/uploads/')
+                      ? 'В общем хранилище GitHub — видно на всех устройствах'
                       : value
                   : hint ||
                     (canUploadToServer()

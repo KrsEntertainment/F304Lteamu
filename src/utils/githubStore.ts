@@ -260,3 +260,91 @@ export async function checkGhAccess(): Promise<{ login: string; canWrite: boolea
 
   return { login: user.login, canWrite: Boolean(repo.permissions?.push) };
 }
+
+// ------------------------------------------------------------------ медиа
+//
+// Файлы кладём прямо в ветку gh-pages (папка uploads/). GitHub Pages отдаёт их
+// сразу по публичному URL, поэтому постеры и видео видны на всех устройствах
+// без пересборки сайта. Ограничение Contents API — 100 МБ на файл,
+// поэтому для больших видео показываем понятную ошибку.
+
+const MEDIA_BRANCH = "gh-pages";
+const MEDIA_DIR = "uploads";
+const MAX_GITHUB_FILE_BYTES = 40 * 1024 * 1024; // с base64-оверхедом ~53 МБ
+
+export interface GhUploadResult {
+  /** Относительный путь для каталога: ./uploads/<файл> */
+  ref: string;
+  /** Публичный абсолютный URL на GitHub Pages */
+  url: string;
+}
+
+export async function uploadMediaToGithub(
+  file: File,
+  onProgress?: (percent: number) => void
+): Promise<GhUploadResult> {
+  const token = getGhToken();
+  if (!token) throw new Error("Нужен GitHub-токен (админка → Синхронизация)");
+  if (file.size > MAX_GITHUB_FILE_BYTES) {
+    throw new Error(
+      `Файл ${(file.size / 1024 / 1024).toFixed(1)} МБ слишком большой для GitHub-режима ` +
+        `(лимит ${MAX_GITHUB_FILE_BYTES / 1024 / 1024} МБ). Укажите прямую ссылку на видео.`
+    );
+  }
+
+  const safe = (file.name || "file").replace(/[^\w.\-]+/g, "_").slice(-70);
+  const name = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safe}`;
+  const path = `${MEDIA_DIR}/${name}`;
+
+  // base64 в память (с проверкой прогресса чтения файла)
+  const buffer = await file.arrayBuffer();
+  onProgress?.(15);
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
+  }
+  const content = btoa(binary);
+  onProgress?.(35);
+
+  const res = await new Promise<{ ok: boolean; status: number; text: string }>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(
+      "PUT",
+      `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}`
+    );
+    xhr.setRequestHeader("Accept", "application/vnd.github+json");
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        // 35% — подготовка base64, остальные 65% — собственно загрузка
+        onProgress?.(35 + Math.round((e.loaded / e.total) * 60));
+      }
+    };
+    xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, text: xhr.responseText });
+    xhr.onerror = () => reject(new Error("Сеть недоступна при загрузке файла"));
+    xhr.send(
+      JSON.stringify({
+        message: `media: ${name}`,
+        content,
+        branch: MEDIA_BRANCH,
+      })
+    );
+  });
+
+  if (!res.ok) {
+    let msg = `GitHub: HTTP ${res.status}`;
+    try {
+      msg = `GitHub: ${JSON.parse(res.text)?.message || msg}`;
+    } catch {
+      /* не JSON */
+    }
+    throw new Error(msg);
+  }
+
+  onProgress?.(100);
+  const base = `https://krsentertainment.github.io/${GH_REPO}`;
+  return { ref: `./${path}`, url: `${base}/${path}` };
+}
