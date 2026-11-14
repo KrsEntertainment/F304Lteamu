@@ -20,6 +20,60 @@ const ENV_BASE = (import.meta.env.VITE_API_URL as string | undefined) || "";
  */
 export const SERVER_URL: string = "";
 
+/**
+ * Возможные адреса сервера, которые проверяются автоматически.
+ * Адрес Deno Deploy предсказуем: <app>.<org>.deno.net — значения совпадают
+ * с deno.json, поэтому после создания приложения ничего вводить не нужно.
+ */
+export const SERVER_CANDIDATES: string[] = [
+  SERVER_URL,
+  "",
+  "https://f304lteam.krsentertainment.deno.net",
+  "https://f304lteam-f304lteam.krsentertainment.deno.net",
+].filter((v, i, arr) => arr.indexOf(v) === i);
+
+let discovered: string | null = null;
+let discoverPromise: Promise<string | null> | null = null;
+
+/**
+ * Ищет живой сервер среди кандидатов (один раз за сессию, результат
+ * запоминается). Возвращает адрес, который отвечает на /api/health.
+ */
+export async function discoverApiBase(force = false): Promise<string | null> {
+  if (!force && discovered !== null) return discovered;
+  if (!force && discoverPromise) return discoverPromise;
+
+  discoverPromise = (async () => {
+    for (const base of SERVER_CANDIDATES) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 4000);
+        const res = await fetch(`${base}/api/health`, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+        clearTimeout(timer);
+        if (!res.ok) continue;
+        const body = (await res.json()) as { ok?: boolean };
+        if (body?.ok) {
+          // Запоминаем рабочий адрес, чтобы дальше ходить прямо в него
+          if (base) localStorage.setItem(API_KEY, base);
+          discovered = base;
+          return base;
+        }
+      } catch {
+        /* пробуем следующий */
+      }
+    }
+    discovered = null;
+    return null;
+  })();
+
+  const result = await discoverPromise;
+  discoverPromise = null;
+  return result;
+}
+
 export function getApiBase(): string {
   const stored = localStorage.getItem(API_KEY);
   if (stored) return stored.replace(/\/$/, "");

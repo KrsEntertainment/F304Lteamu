@@ -12,7 +12,7 @@
 // Локальные данные (localStorage) — только кеш и страховка, пока правка не
 // ушла в общую базу. Такую правку помечаем pending, и чужая копия её не
 // перетирает.
-import { api, getAdminToken, getUserId, resolveServerUrl } from "./api";
+import { api, discoverApiBase, getAdminToken, getUserId, resolveServerUrl } from "./api";
 import { getGhToken, hasGithubWrite, readGhState, writeGhState } from "./githubStore";
 import { StudioData, WatchProgressItem } from "../types";
 
@@ -37,6 +37,9 @@ export function currentBackend(): Backend | null {
 export async function resolveBackend(force = false): Promise<Backend> {
   if (!force && backend && Date.now() - backendCheckedAt < 60_000) return backend;
   try {
+    // адрес сервера находится сам: проверяем известные варианты
+    const base = await discoverApiBase(force);
+    if (base === null) throw new Error("сервер не найден");
     const health = await api.health();
     if (health?.ok) {
       backend = "server";
@@ -303,8 +306,11 @@ export async function pingServer(): Promise<{
   updatedAt?: number;
   storage?: string;
   backend?: Backend;
+  base?: string;
 }> {
   try {
+    const base = await discoverApiBase();
+    if (base === null) throw new Error("сервер не найден");
     const health = await api.health();
     if (health?.ok) {
       backend = "server";
@@ -314,6 +320,7 @@ export async function pingServer(): Promise<{
         updatedAt: health.updatedAt,
         storage: health.storage,
         backend: "server",
+        base,
       };
     }
   } catch {
