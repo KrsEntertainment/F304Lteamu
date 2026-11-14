@@ -1,8 +1,179 @@
 {
-  "version": 4,
-  "updatedAt": 1794685377867,
+  "version": 3,
+  "updatedAt": 1794685006437,
   "studioData": {
     "catalog": [
+      {
+        "id": "series-nochnoi-kod",
+        "type": "series",
+        "title": "Ночной код 304",
+        "tagline": "В городе, где память продаётся по подписке, правда стоит дороже жизни.",
+        "description": "Недалёкое будущее. Бывший архивариус цифровых улик Кирилл находит скрытый фрагмент видеосигнала с маркировкой F-304 — запись преступления, которое должно произойти через семь ночей. Чтобы остановить теневой синдикат и спасти пропавшую сестру, ему придётся взломать закрытую сеть мегаполиса, где каждое воспоминание можно переписать.",
+        "year": 2025,
+        "ageRating": "18+",
+        "rating": 9.4,
+        "duration": "2 сезона • 7 серий",
+        "quality": "4K HDR",
+        "genres": [
+          "Киберпанк",
+          "Триллер",
+          "Нуар",
+          "Детектив"
+        ],
+        "poster": "/images/hero-nochnoi-kod.jpg",
+        "backdrop": "/images/hero-nochnoi-kod.jpg",
+        "trailerUrl": "https://videos.pexels.com/video-files/19058578/19058578-hd_1920_1080_24fps.mp4",
+        "videoUrl": "https://videos.pexels.com/video-files/19058578/19058578-hd_1920_1080_24fps.mp4",
+        "director": "Дмитрий Соколов",
+        "published": true,
+        "isFeatured": true,
+        "isNew": true,
+        "isTop": true,
+        "createdAt": "2025-11-12",
+        "cast": [
+          {
+            "actorId": "actor-1",
+            "characterName": "Кирилл Воронов",
+            "isLead": true
+          },
+          {
+            "actorId": "actor-2",
+            "characterName": "Елена «Сигнал» Крылова",
+            "isLead": true
+          },
+          {
+            "actorId": "actor-3",
+            "characterName": "Комиссар Ветров"
+          },
+          {
+            "actorId": "actor-6",
+            "characterName": "Архитектор сети"
+          }
+        ],
+        "seasons": [
+          {
+            "id": "s1-nk",
+            "number": 1,
+            "title": "Сезон 1: Нулевой сектор",
+            "episodes": [
+              {
+                "id": "ep-nk-1",
+                "number": 1,
+                "title": "Помехи на частоте 304",
+                "description": "Во время ночного дежурства Кирилл перехватывает зашифрованную трансляцию с крыш северного района и впервые слышит голос пропавшей сестры.",
+                "duration": "48 мин",
+                "thumbnail": "/images/hero-nochnoi-kod.jpg",
+                "videoUrl": "https://videos.pexels.com/video-files/19058578/19058578-hd_1920_1080_24fps.mp4"
+              },
+              {
+                "id": "ep-nk-2",
+                "number": 2,
+                "title": "Дождь смывает следы",
+                "description": "Елена выводит Кирилла на подпольную студию монтажа памяти. За ними начинается скрытая слежка под проливным дождём.",
+                "duration": "51 мин",
+                "thumbnail": "/images/poster-gorod-tenei.jpg",
+                "videoUrl": "https://videos.pexels.com/video-files/15661481/15661481-hd_1920_1080_24fps.mp4"
+              },
+              {
+                "id": "ep-nk-3",
+                "number": 3,
+                "title": "Неоновый свидетель",
+                "description": "Найденная плёнка раскрывает связь между городской полицией и закрытым проектом «Эхо». У героев остаётся меньше суток.",
+                "duration": "46 мин",
+                "thumbnail": "/images/news-backstage.jpg",
+                "videoUrl": "https://videos.pexels.com/video-files/855433/855433-hd_1864_1048_25fps.mp4"
+              },
+              {
+                "id": "ep-nk-4",
+                "number": 4,
+                "title": "Точка невозврата",
+                "description": "Финал первого сезона: ночной штурм серверной башни и неожиданное признание человека, которому Кирилл доверял больше всех.",
+                "duration": "58 мин",
+                "thumbnail": "/images/hero-nochnoi-kod.jpg",
+                "videoUrl": "https://videos.pexels.com/video-files/20350798/20350798-uhd_3840_2160_50fps.mp4"
+              }
+            ]
+          },
+          {
+            "id": "s2-nk",
+            "number": 2,
+            "title": "Сезон 2: Чёрный кадр",
+            "episodes": [
+              {
+                "id": "ep-nk-5",
+                "number": 1,
+                "title": "Перезагрузка памяти",
+                "description": "Спустя полгода после обрушения сети в городе появляется новый оператор сигнала 304 — и он знает настоящее прошлое Елены.",
+                "duration": "52 мин",
+                "thumbnail": "/images/poster-signal-iz-glubiny.jpg",
+                "videoUrl": "https://videos.pexels.com/video-files/19058578/19058578-hd_1920_1080_24fps.mp4"
+              },
+              {
+                "id": "ep-nk-6",
+                "number": 2,
+                "title": "Тени под эстакадой",
+                "description": "Кирилл выходит на след курьеров данных в промышленном порту, где снимается фальшивая хроника городских новостей.",
+                "duration": "49 мин",
+                "thumbnail": "/images/poster-gorod-tenei.jpg",
+                "videoUrl": "https://videos.pexels.com/video-files/15661481/15661481-hd_1920_1080_24fps.mp4"
+              },
+              {
+                "id": "ep-nk-7",
+                "number": 3,
+                "title": "Последняя частота",
+                "description": "Две стороны заговора сходятся на заброшенной телебашне. Каждая секунда прямого эфира меняет судьбу города.",
+                "duration": "61 мин",
+                "thumbnail": "/images/hero-nochnoi-kod.jpg",
+                "videoUrl": "https://videos.pexels.com/video-files/20350798/20350798-uhd_3840_2160_50fps.mp4"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "movie-granica-tishiny",
+        "type": "movie",
+        "title": "Граница тишины",
+        "tagline": "Когда снег заметает дорогу назад, лес начинает говорить.",
+        "description": "Следователь Анна уезжает в заснеженный северный посёлок, чтобы закрыть старое дело об исчезновении съёмочной группы. Единственная зацепка — красный свет фар на старой видеокассете и загадочное молчание местных жителей, скрывающих тайну последней зимы.",
+        "year": 2025,
+        "ageRating": "16+",
+        "rating": 8.9,
+        "duration": "1ч 54м",
+        "quality": "4K HDR",
+        "genres": [
+          "Триллер",
+          "Мистика",
+          "Детектив"
+        ],
+        "poster": "/images/poster-granica-tishiny.jpg",
+        "backdrop": "/images/poster-granica-tishiny.jpg",
+        "trailerUrl": "https://videos.pexels.com/video-files/855433/855433-hd_1864_1048_25fps.mp4",
+        "videoUrl": "https://videos.pexels.com/video-files/855433/855433-hd_1864_1048_25fps.mp4",
+        "director": "Дмитрий Соколов",
+        "published": true,
+        "isFeatured": true,
+        "isNew": true,
+        "isTop": true,
+        "createdAt": "2025-10-20",
+        "cast": [
+          {
+            "actorId": "actor-2",
+            "characterName": "Анна Соболева",
+            "isLead": true
+          },
+          {
+            "actorId": "actor-1",
+            "characterName": "Егерь Сергей",
+            "isLead": true
+          },
+          {
+            "actorId": "actor-3",
+            "characterName": "Начальник станции"
+          }
+        ],
+        "seasons": []
+      },
       {
         "id": "series-gorod-tenei",
         "type": "series",
@@ -355,5 +526,5 @@
   },
   "lists": {},
   "progress": {},
-  "reason": "studio catalog update"
+  "reason": "restore featured series"
 }
