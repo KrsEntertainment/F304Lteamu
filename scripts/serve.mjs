@@ -25,25 +25,55 @@ const MIME = {
   ".txt": "text/plain; charset=utf-8",
 };
 
-async function send(res, filePath) {
+const BASE_HEADERS = {
+  // Ничего не блокируем: превью открывается внутри iframe на домене платформы.
+  "Access-Control-Allow-Origin": "*",
+  "Cross-Origin-Resource-Policy": "cross-origin",
+  "X-Content-Type-Options": "nosniff",
+};
+
+async function sendFile(req, res, filePath, status = 200) {
   const body = await readFile(filePath);
-  res.writeHead(200, {
+  const isHtml = extname(filePath).toLowerCase() === ".html";
+  res.writeHead(status, {
+    ...BASE_HEADERS,
     "Content-Type": MIME[extname(filePath).toLowerCase()] || "application/octet-stream",
     "Content-Length": body.length,
-    "Cache-Control": extname(filePath) === ".html" ? "no-cache" : "public, max-age=3600",
+    "Cache-Control": isHtml ? "no-store" : "public, max-age=3600",
   });
-  res.end(body);
+  res.end(req.method === "HEAD" ? undefined : body);
 }
 
 const server = createServer(async (req, res) => {
+  const started = Date.now();
+  const host = req.headers.host || "-";
+  const ua = (req.headers["user-agent"] || "-").slice(0, 60);
+  res.on("finish", () => {
+    console.log(
+      `[req] ${new Date().toISOString()} ${req.method} ${req.url} host=${host} ua="${ua}" -> ${res.statusCode} ${Date.now() - started}ms`
+    );
+  });
+
   try {
     const url = new URL(req.url || "/", "http://localhost");
+
+    if (url.pathname === "/healthz") {
+      const body = Buffer.from(
+        JSON.stringify({ ok: true, host, time: new Date().toISOString() }, null, 2)
+      );
+      res.writeHead(200, { ...BASE_HEADERS, "Content-Type": "application/json; charset=utf-8", "Content-Length": body.length });
+      res.end(req.method === "HEAD" ? undefined : body);
+      return;
+    }
+
     let rel = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, "");
     let filePath = join(ROOT, rel);
     if (!filePath.startsWith(ROOT)) {
-      res.writeHead(403).end("Forbidden");
+      res.writeHead(403, { ...BASE_HEADERS, "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Forbidden");
       return;
     }
+
     try {
       const info = await stat(filePath);
       if (info.isDirectory()) filePath = join(filePath, "index.html");
@@ -51,13 +81,24 @@ const server = createServer(async (req, res) => {
       // SPA-фолбэк: любой неизвестный путь отдаёт index.html
       filePath = join(ROOT, "index.html");
     }
-    await send(res, filePath);
+
+    await sendFile(req, res, filePath);
   } catch (err) {
-    res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
+    console.error("[err]", err && err.stack ? err.stack : err);
+    res.writeHead(500, { ...BASE_HEADERS, "Content-Type": "text/plain; charset=utf-8" });
     res.end("Internal error: " + (err && err.message));
   }
 });
 
+server.on("error", (err) => {
+  console.error("[fatal] server error:", err);
+  process.exit(1);
+});
+
+// Держим соединения живыми для прокси превью
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 70_000;
+
 server.listen(PORT, HOST, () => {
-  console.log(`F304Lteam site: http://${HOST}:${PORT}`);
+  console.log(`F304Lteam site listening on http://${HOST}:${PORT} (root: ${ROOT})`);
 });
