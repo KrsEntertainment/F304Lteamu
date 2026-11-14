@@ -44,7 +44,8 @@ export async function discoverApiBase(force = false): Promise<string | null> {
   if (!force && discoverPromise) return discoverPromise;
 
   discoverPromise = (async () => {
-    for (const base of SERVER_CANDIDATES) {
+    // Проверяем все варианты одновременно, чтобы не ждать по 4 секунды каждый
+    const probes = SERVER_CANDIDATES.map(async (base) => {
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 4000);
@@ -53,20 +54,22 @@ export async function discoverApiBase(force = false): Promise<string | null> {
           cache: "no-store",
         });
         clearTimeout(timer);
-        if (!res.ok) continue;
+        if (!res.ok) return null;
         const body = (await res.json()) as { ok?: boolean };
-        if (body?.ok) {
-          // Запоминаем рабочий адрес, чтобы дальше ходить прямо в него
-          if (base) localStorage.setItem(API_KEY, base);
-          discovered = base;
-          return base;
-        }
+        return body?.ok ? base : null;
       } catch {
-        /* пробуем следующий */
+        return null;
       }
+    });
+    const found = (await Promise.all(probes)).find((v) => v !== null);
+    if (found === undefined) {
+      discovered = null;
+      return null;
     }
-    discovered = null;
-    return null;
+    // Запоминаем рабочий адрес, чтобы дальше ходить прямо в него
+    if (found) localStorage.setItem(API_KEY, found);
+    discovered = found;
+    return found;
   })();
 
   const result = await discoverPromise;
