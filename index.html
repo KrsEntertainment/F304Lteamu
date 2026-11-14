@@ -8,12 +8,25 @@
       name="description"
       content="Официальная стриминг-платформа студии F304Lteam. Смотрите оригинальные фильмы, сериалы, трейлеры, знакомьтесь с актёрами и новостями продакшна онлайн."
     />
+    <!--
+      Шрифты грузятся НЕ блокирующе: если fonts.googleapis.com недоступен
+      (бывает в РФ и в корпоративных сетях), сайт всё равно отрисуется
+      на системных шрифтах — без белого экрана и долгого ожидания.
+    -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;600;700;800;900&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;600;700;800;900&display=swap"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+      />
+    </noscript>
   </head>
   <body class="bg-[#08080A] text-[#F5F5F7] antialiased selection:bg-[#E50914] selection:text-white">
     <div id="root">
