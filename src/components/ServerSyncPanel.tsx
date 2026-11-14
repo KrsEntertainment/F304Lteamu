@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  AlertCircle,
   CheckCircle2,
   Cloud,
   CloudOff,
@@ -22,7 +23,6 @@ import {
   setBackendMode,
   setGhToken,
 } from '../utils/githubStore';
-import { alternateMirrorUrl, isOnMirror } from '../utils/mirrors';
 import { StudioData } from '../types';
 
 interface ServerSyncPanelProps {
@@ -115,8 +115,27 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({
     onNotify('Настройки синхронизации сохранены');
   };
 
+  const canWrite = mode === 'github' ? Boolean(ghToken.trim()) : Boolean(token.trim());
+
   return (
     <div className="space-y-6">
+      {/* Главная проверка: без токена правки не уходят в общую базу */}
+      {!canWrite && (
+        <div className="rounded-2xl border border-[#E50914]/40 bg-[#E50914]/10 p-4">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-[#E50914]" />
+            <div>
+              <p className="text-sm font-bold text-white">Запись отключена — правки не сохраняются</p>
+              <p className="mt-1 text-xs leading-relaxed text-[#FFB4B8]">
+                Без токена каталог меняется только в этом браузере: удалённые фильмы вернутся
+                после перезагрузки страницы. Вставьте GitHub-токен ниже и нажмите
+                «Сохранить и проверить».
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Выбор хранилища */}
       <div className="rounded-2xl border border-white/10 bg-[#0E0F16] p-5">
         <h3 className="font-display text-base font-bold text-white">Где хранить общие данные</h3>
@@ -359,19 +378,7 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({
             <dt className="text-zinc-500">Источник данных</dt>
             <dd className="font-mono text-emerald-300">{sourceName || '—'}</dd>
           </div>
-          <div className="flex justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2">
-            <dt className="text-zinc-500">Если сайт не открывается</dt>
-            <dd className="truncate">
-              <a
-                href={alternateMirrorUrl()}
-                target="_blank"
-                rel="noreferrer"
-                className="font-mono text-[#FF8A90] underline decoration-dotted"
-              >
-                {isOnMirror() ? 'GitHub Pages' : 'jsDelivr-зеркало'}
-              </a>
-            </dd>
-          </div>
+
           {account && (
             <div className="flex justify-between gap-3 rounded-lg bg-white/[0.03] px-3 py-2 sm:col-span-2">
               <dt className="text-zinc-500">GitHub-аккаунт</dt>

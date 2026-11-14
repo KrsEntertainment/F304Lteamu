@@ -21,16 +21,6 @@ const API_KEY = "f304lteam_gh_backend_v1"; // "github" | "server"
 // свой же домен (./state.json рядом с index.html). Никаких внешних CDN:
 // в России raw.githubusercontent.com и api.github.com бывают недоступны,
 // а собственный домен сайта работает всегда, если открылся сам сайт.
-const JS_BRANCH = BRANCH_CANDIDATES[0].replace(/\//g, "%2F");
-const CDN_URLS = [
-  `https://cdn.jsdelivr.net/gh/${GH_OWNER}/${GH_REPO}@gh-pages/state.json`,
-  `https://cdn.jsdelivr.net/gh/${GH_OWNER}/${GH_REPO}@${JS_BRANCH}/${STATE_PATH}`,
-];
-
-/** Адрес публичной копии состояния на ветке gh-pages (для проверки связи) */
-export const PUBLIC_STATE_URL =
-  `https://cdn.jsdelivr.net/gh/${GH_OWNER}/${GH_REPO}@gh-pages/state.json`;
-
 function sameOriginUrl(): string | null {
   if (typeof location === "undefined" || !location.protocol.startsWith("http")) return null;
   return "./state.json";
@@ -40,7 +30,6 @@ function stateUrls(): string[] {
   const urls: string[] = [];
   const local = sameOriginUrl();
   if (local) urls.push(local);
-  urls.push(...CDN_URLS);
   urls.push(
     `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${BRANCH_CANDIDATES[0]}/${STATE_PATH}`,
     `https://krsentertainment.github.io/${GH_REPO}/state.json`
@@ -48,12 +37,6 @@ function stateUrls(): string[] {
   return urls;
 }
 
-/** Резервный источник картинок: если Pages не открывается, берём CDN */
-export function cdnFallbackUrl(url: string): string | null {
-  const m = url.match(/(?:^|\.\/)\/?(images|uploads)\/(.+)$/);
-  if (!m) return null;
-  return `https://cdn.jsdelivr.net/gh/${GH_OWNER}/${GH_REPO}@gh-pages/${m[1]}/${m[2]}`;
-}
 
 export interface GhState {
   version: number;
@@ -103,11 +86,9 @@ export async function readGhState(force = false): Promise<GhState> {
   for (const url of stateUrls()) {
     const label = url === "./state.json"
       ? "свой домен"
-      : url.includes("jsdelivr")
-        ? "CDN jsDelivr"
-        : url.includes("raw.githubusercontent")
-          ? "raw.githubusercontent"
-          : "GitHub Pages";
+      : url.includes("raw.githubusercontent")
+        ? "raw.githubusercontent"
+        : "GitHub Pages";
     try {
       const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) continue;

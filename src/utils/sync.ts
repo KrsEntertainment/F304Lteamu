@@ -110,7 +110,33 @@ export interface SyncResult<T> {
  * Если на сервере данных ещё нет, а локально они есть — загружаем локальные
  * (только при наличии админ-токена, чтобы зритель не перезаписал каталог).
  */
+const PENDING_KEY = "f304lteam_pending_push_v1";
+
+/** Пометить правку как ещё не отправленную на сервер */
+export function markPending(flag: boolean) {
+  try {
+    if (flag) localStorage.setItem(PENDING_KEY, "1");
+    else localStorage.removeItem(PENDING_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function hasPending(): boolean {
+  try {
+    return localStorage.getItem(PENDING_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export async function pullData(localFallback: StudioData): Promise<SyncResult<StudioData>> {
+  // Если на этом устройстве есть неотправленные правки — они важнее
+  // серверной копии: иначе перезагрузка страницы откатит работу админа.
+  if (hasPending()) {
+    return { data: localFallback, updatedAt: 0, fromServer: false };
+  }
+
   if (isGithubMode()) {
     try {
       const state = await readGhState();
@@ -181,6 +207,7 @@ export async function checkVersion(): Promise<number | null> {
 }
 
 export async function pullIfChanged(): Promise<StudioData | null> {
+  if (hasPending()) return null; // сначала нужно отправить свои правки
   const newVersion = await checkVersion();
   if (newVersion === null) return null;
 
@@ -205,20 +232,29 @@ export async function pullIfChanged(): Promise<StudioData | null> {
   }
 }
 
+/** Есть ли право записи (токен GitHub либо токен своего API) */
+export function canWriteRemote(): boolean {
+  return isGithubMode() ? Boolean(getGhToken()) : Boolean(getAdminToken());
+}
+
 /** Отправить контент студии на сервер (только админ) */
 export async function pushData(data: StudioData): Promise<number | null> {
+  if (!canWriteRemote()) {
+    throw new Error("Нет токена для записи — правки сохранены только на этом устройстве");
+  }
+  markPending(true);
   if (isGithubMode()) {
-    if (!getGhToken()) return null;
     const saved = await writeGhState(
       (current) => ({ ...current, studioData: data }),
       "studio catalog update"
     );
     localStorage.setItem(LOCAL_VERSION_KEY, String(saved.updatedAt));
+    markPending(false);
     return saved.updatedAt;
   }
-  if (!hasApi() || !getAdminToken()) return null;
   const { updatedAt } = await api.saveData(data);
   localStorage.setItem(LOCAL_VERSION_KEY, String(updatedAt));
+  markPending(false);
   return updatedAt;
 }
 

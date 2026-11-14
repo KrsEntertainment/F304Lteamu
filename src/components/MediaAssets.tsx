@@ -6,7 +6,6 @@ import {
   isIdbRef,
   canUploadToServer,
 } from '../utils/mediaStore';
-import { cdnFallbackUrl } from '../utils/githubStore';
 import { assetUrl } from '../utils/asset';
 
 export function useMediaUrl(ref?: string): string {
@@ -49,14 +48,10 @@ export const MediaImg: React.FC<MediaImgProps> = ({
 }) => {
   const url = useMediaUrl(srcRef);
   const [errored, setErrored] = useState(false);
-  const [useFallback, setUseFallback] = useState(false);
-  // Если свой домен не отдаёт картинку (или Pages заблокирован) — берём CDN
-  const fallback = cdnFallbackUrl(url);
-  const displayUrl = useFallback && fallback ? fallback : url;
+  const displayUrl = url;
 
   useEffect(() => {
     setErrored(false);
-    setUseFallback(false);
   }, [url]);
 
   if (!displayUrl || errored) {
@@ -76,10 +71,7 @@ export const MediaImg: React.FC<MediaImgProps> = ({
     <img
       src={displayUrl}
       alt={alt}
-      onError={() => {
-        if (!useFallback && fallback) setUseFallback(true);
-        else setErrored(true);
-      }}
+      onError={() => setErrored(true)}
       className={className}
       loading="lazy"
       {...rest}

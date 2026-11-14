@@ -55,6 +55,9 @@ import {
   readLocalData,
   readLocalList,
   readLocalProgress,
+  canWriteRemote,
+  hasPending,
+  markPending,
   syncAvailable,
   writeLocalData,
   writeLocalList,
@@ -136,6 +139,10 @@ export default function App() {
   // ---------------------------------------------------------------- синхронизация
   const [syncOnline, setSyncOnline] = useState(syncAvailable());
   const [syncing, setSyncing] = useState(false);
+  // Состояние сохранения правок: отправлено / отправляется / только локально
+  const [saveState, setSaveState] = useState<'saved' | 'saving' | 'unsaved'>(
+    hasPending() ? 'unsaved' : 'saved'
+  );
 
   // Данные с сервера имеют приоритет; локальные правки уходят на сервер
   const applyRemote = useCallback((next: StudioData) => {
@@ -200,34 +207,87 @@ export default function App() {
     };
   }, [applyRemote, notify]);
 
-  // Пуш контента студии на сервер (только из админки, с токеном)
+  // Отправка правок на сервер. Правка сохраняется локально сразу (страховка
+  // от потери при перезагрузке) и уходит на сервер; пока не ушла — помечена
+  // как неотправленная, и серверная копия её не перетирает.
   const pushTimerRef = useRef<number | null>(null);
   const lastPushedRef = useRef<string>('');
+  const pushedOnceRef = useRef(false);
+
   useEffect(() => {
     writeLocalData(studioData);
+    // Первый рендер — это данные, только что полученные с сервера
+    if (!pushedOnceRef.current) {
+      pushedOnceRef.current = true;
+      lastPushedRef.current = JSON.stringify(studioData);
+      return;
+    }
+
     const serialized = JSON.stringify(studioData);
     if (serialized === lastPushedRef.current) return;
+
+    // Сразу фиксируем локально и помечаем как «не отправлено» — даже если
+    // вкладку закроют через секунду, правка не потеряется.
+    markPending(true);
+    setSaveState('saving');
+
     if (pushTimerRef.current) window.clearTimeout(pushTimerRef.current);
     pushTimerRef.current = window.setTimeout(async () => {
+      if (!canWriteRemote()) {
+        setSaveState('unsaved');
+        notify('Правки сохранены только на этом устройстве: нет токена записи (Админка → Синхронизация)');
+        return;
+      }
       try {
-        const updatedAt = await pushData(studioData);
-        if (updatedAt) {
-          lastPushedRef.current = serialized;
-          setSyncOnline(true);
-        }
+        await pushData(studioData);
+        lastPushedRef.current = serialized;
+        markPending(false);
+        setSaveState('saved');
+        setSyncOnline(true);
+        notify('Изменения сохранены в общей базе');
       } catch (err) {
+        setSaveState('unsaved');
         setSyncOnline(false);
         notify(
-          err instanceof Error && err.message.includes('токен')
-            ? 'Админка: нужен токен сервера (Настройки → Синхронизация)'
-            : 'Не удалось сохранить на сервер — данные сохранены локально'
+          err instanceof Error
+            ? `Не сохранено на сервер: ${err.message}`
+            : 'Не сохранено на сервер — данные остались на устройстве'
         );
       }
-    }, 800);
+    }, 700);
     return () => {
       if (pushTimerRef.current) window.clearTimeout(pushTimerRef.current);
     };
   }, [studioData, notify]);
+
+  // Фоновая досылка: если правка не ушла (пропала сеть), повторяем
+  useEffect(() => {
+    const id = window.setInterval(async () => {
+      if (!hasPending() || !canWriteRemote() || document.hidden) return;
+      try {
+        await pushData(studioData);
+        lastPushedRef.current = JSON.stringify(studioData);
+        markPending(false);
+        setSaveState('saved');
+        setSyncOnline(true);
+      } catch {
+        /* попробуем снова позже */
+      }
+    }, 30_000);
+    return () => window.clearInterval(id);
+  }, [studioData]);
+
+  // Не даём потерять неотправленную правку при закрытии вкладки
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasPending()) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
 
   // «Мой список» синхронизируется между устройствами
   const listPushSkippedRef = useRef(true);
@@ -1416,7 +1476,8 @@ export default function App() {
 
       <ServerSyncBar
         online={syncOnline}
-        syncing={syncing}
+        syncing={syncing || saveState === 'saving'}
+        saveState={saveState}
         onRefresh={handleManualRefresh}
       />
 
