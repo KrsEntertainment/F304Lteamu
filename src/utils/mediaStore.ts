@@ -6,6 +6,7 @@
 // (idb://...): правка не теряется, но другие устройства увидят её только
 // после успешной загрузки на сервер.
 import { api, getAdminToken, resolveServerUrl } from "./api";
+import { getGhToken, hasGithubWrite, uploadMediaToGithub } from "./githubStore";
 
 const DB_NAME = "f304lteam_media_db";
 const STORE_NAME = "media_blobs";
@@ -39,7 +40,7 @@ export function isIdbRef(url?: string): boolean {
 
 /** Есть ли куда загружать файлы (общий сервер + вход в админку) */
 export function canUploadToServer(): boolean {
-  return Boolean(getAdminToken());
+  return Boolean(getAdminToken()) || hasGithubWrite();
 }
 
 /**
@@ -50,12 +51,22 @@ export async function saveGalleryFile(
   file: File,
   onProgress?: UploadProgress
 ): Promise<string> {
-  if (canUploadToServer()) {
+  if (getAdminToken()) {
     try {
       const result = await api.uploadFile(file, onProgress);
       return result.url; // /uploads/<файл> — общий для всех устройств
     } catch (err) {
-      console.warn("Загрузка на сервер не удалась, сохраняю локально:", err);
+      console.warn("Загрузка на сервер не удалась, пробую резервный путь:", err);
+    }
+  }
+
+  // Резервный путь: файл уходит в репозиторий (если доступ уже настроен)
+  if (getGhToken()) {
+    try {
+      const result = await uploadMediaToGithub(file, onProgress);
+      return result.ref;
+    } catch (err) {
+      console.warn("Резервная загрузка не удалась, сохраняю локально:", err);
     }
   }
 

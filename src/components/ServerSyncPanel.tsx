@@ -28,6 +28,7 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({ data, onPulled
   const [status, setStatus] = useState<Status>('checking');
   const [updatedAt, setUpdatedAt] = useState<number>(0);
   const [storage, setStorage] = useState<string>('');
+  const [backend, setBackend] = useState<string>('');
   const [persistent, setPersistent] = useState<boolean>(true);
   const [pending, setPending] = useState<boolean>(hasPending());
   const [sending, setSending] = useState(false);
@@ -40,6 +41,7 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({ data, onPulled
       setStatus('ok');
       setUpdatedAt(res.updatedAt || 0);
       setStorage(res.storage || '');
+      setBackend(res.backend || '');
       setPersistent(res.storage ? res.storage === 'deno-kv' : true);
     } else {
       setStatus('fail');
@@ -108,7 +110,7 @@ export const ServerSyncPanel: React.FC<ServerSyncPanelProps> = ({ data, onPulled
             </p>
             <p className="mt-1 text-xs text-zinc-400">
               {status === 'ok'
-                ? `Данные обновлены: ${dateLabel}. Правки сразу видны на всех устройствах.`
+                ? `${backend === 'github' ? 'Резервный канал записи. ' : ''}Данные обновлены: ${dateLabel}. Правки сразу видны на всех устройствах.`
                 : status === 'fail'
                   ? 'Правки сохраняются в этом браузере и уйдут сами, как только связь вернётся.'
                   : 'Определяю адрес сервера автоматически.'}
