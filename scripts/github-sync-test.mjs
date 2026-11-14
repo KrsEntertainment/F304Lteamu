@@ -23,24 +23,39 @@ const check = async (name, fn) => {
 const decode = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, "")), (c) => c.charCodeAt(0)));
 const encode = (text) => Buffer.from(text, "utf8").toString("base64");
 
+const GH_HEADERS = () => ({
+  Accept: "application/vnd.github+json",
+  "User-Agent": "f304lteam-sync-test",
+  ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
+});
+
 const api = async (path, init = {}) => {
   const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}${path}`, {
     ...init,
-    headers: {
-      Accept: "application/vnd.github+json",
-      ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
-      ...(init.headers || {}),
-    },
+    headers: { ...GH_HEADERS(), ...(init.headers || {}) },
   });
   const body = await res.json().catch(() => null);
   return { status: res.status, body };
 };
 
+// Чтение так, как это делает браузер: raw-домен, а если сеть его блокирует —
+// публичный API (без токена).
 const publicRead = async (branch) => {
+  try {
+    const res = await fetch(
+      `https://raw.githubusercontent.com/${OWNER}/${REPO}/${branch}/${PATH}`,
+      { headers: { "User-Agent": "f304lteam-sync-test" } }
+    );
+    if (res.ok) return { status: res.status, body: await res.json(), via: "raw" };
+    if (res.status !== 404) throw new Error(`raw: HTTP ${res.status}`);
+  } catch {
+    /* пробуем API */
+  }
   const res = await fetch(
-    `https://raw.githubusercontent.com/${OWNER}/${REPO}/${branch}/${PATH}`
+    `https://api.github.com/repos/${OWNER}/${REPO}/contents/${PATH}?ref=${encodeURIComponent(branch)}`,
+    { headers: { Accept: "application/vnd.github.raw", "User-Agent": "f304lteam-sync-test" } }
   );
-  return { status: res.status, body: res.ok ? await res.json() : null };
+  return { status: res.status, body: res.ok ? await res.json() : null, via: "api" };
 };
 
 console.log("\nGitHub как общая база данных");
@@ -52,6 +67,7 @@ await check("state.json публично читается (устройство 
     const { status, body } = await publicRead(candidate);
     if (status === 200 && body) {
       branch = candidate;
+      console.log(`    (источник: ${body ? "ok" : "?"})`);
       assert.ok(Array.isArray(body.studioData?.catalog), "нет catalog");
       return;
     }
@@ -76,7 +92,7 @@ if (!TOKEN) {
     const { status, body } = await api("");
     assert.equal(status, 200, `HTTP ${status}`);
     assert.ok(body.permissions?.push, "нет права push (Contents: Read and write)");
-    const file = await api(`/contents/${PATH}?ref=${branch}`);
+    const file = await api(`/contents/${PATH}?ref=${encodeURIComponent(branch)}`);
     assert.equal(file.status, 200);
     sha = file.body.sha;
     original = decode(file.body.content);
@@ -110,7 +126,7 @@ if (!TOKEN) {
   });
 
   await check("откат тестовых изменений", async () => {
-    const file = await api(`/contents/${PATH}?ref=${branch}`);
+    const file = await api(`/contents/${PATH}?ref=${encodeURIComponent(branch)}`);
     const put = await api(`/contents/${PATH}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

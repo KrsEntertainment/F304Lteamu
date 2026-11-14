@@ -91,6 +91,30 @@ export async function readGhState(force = false): Promise<GhState> {
       /* пробуем следующий источник */
     }
   }
+  // Последний резерв: содержимое через API (если raw-домен блокируется сетью)
+  for (const branch of BRANCH_CANDIDATES) {
+    try {
+      const res = await fetch(
+        `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${STATE_PATH}?ref=${encodeURIComponent(branch)}`,
+        { headers: { Accept: "application/vnd.github.raw" }, cache: "no-store" }
+      );
+      if (!res.ok) continue;
+      const parsed = (await res.json()) as GhState;
+      if (parsed && typeof parsed === "object" && "updatedAt" in parsed) {
+        const state: GhState = {
+          ...EMPTY_STATE,
+          ...parsed,
+          lists: parsed.lists || {},
+          progress: parsed.progress || {},
+        };
+        cache = { state, fetchedAt: Date.now() };
+        return state;
+      }
+    } catch {
+      /* нет сети */
+    }
+  }
+
   return cache?.state || EMPTY_STATE;
 }
 
@@ -145,7 +169,7 @@ async function resolveBranch(): Promise<string> {
   if (resolvedBranch) return resolvedBranch;
   for (const branch of BRANCH_CANDIDATES) {
     try {
-      const res = await ghApi(`/contents/${STATE_PATH}?ref=${branch}`);
+      const res = await ghApi(`/contents/${STATE_PATH}?ref=${encodeURIComponent(branch)}`);
       if (res.ok) {
         resolvedBranch = branch;
         return branch;
@@ -160,14 +184,15 @@ async function resolveBranch(): Promise<string> {
 
 export async function writeGhState(
   mutate: (state: GhState) => GhState,
-  reason: string
+  reason: string,
+  attempt = 1
 ): Promise<GhState> {
   // Всегда берём свежую версию из API (в raw может быть кеш CDN)
   let current: GhState = EMPTY_STATE;
   let sha: string | undefined;
 
   const branch = await resolveBranch();
-  const res = await ghApi(`/contents/${STATE_PATH}?ref=${branch}`);
+  const res = await ghApi(`/contents/${STATE_PATH}?ref=${encodeURIComponent(branch)}`);
   const file = (await res.json()) as { content: string; sha: string };
   sha = file.sha;
   try {
@@ -181,16 +206,36 @@ export async function writeGhState(
   next.updatedAt = Date.now();
   next.reason = reason;
 
-  await ghApi(`/contents/${STATE_PATH}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message: `data: ${reason}`,
-      content: encodeBase64Utf8(JSON.stringify(next, null, 2) + "\n"),
-      sha,
-      branch,
-    }),
-  });
+  const putRes = await fetch(
+    `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${STATE_PATH}`,
+    {
+      method: "PUT",
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${getGhToken()}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        message: `data: ${reason}`,
+        content: encodeBase64Utf8(JSON.stringify(next, null, 2) + "\n"),
+        sha,
+        branch,
+      }),
+    }
+  );
+
+  if (!putRes.ok) {
+    // 409/422 — файл изменился между чтением и записью (второе устройство).
+    // Перечитываем актуальную версию и применяем правку ещё раз.
+    if ((putRes.status === 409 || putRes.status === 422) && attempt < 4) {
+      cache = null;
+      await new Promise((r) => setTimeout(r, 250 * attempt));
+      return writeGhState(mutate, reason, attempt + 1);
+    }
+    const body = await putRes.json().catch(() => null);
+    throw new Error(`GitHub: ${body?.message || `HTTP ${putRes.status}`}`);
+  }
 
   cache = { state: next, fetchedAt: Date.now() };
   return next;

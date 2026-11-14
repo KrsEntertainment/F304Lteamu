@@ -437,13 +437,20 @@ export default function App() {
     setPlayback({ item, mode: 'trailer' });
   };
 
+  const lastProgressPushRef = useRef<Record<string, number>>({});
+
   const handleSaveWatchProgress = (progress: WatchProgressItem) => {
     setProgressMap((prev) => ({
       ...prev,
       [progress.itemId]: progress,
     }));
-    // Отправляем на сервер, чтобы продолжить просмотр на другом устройстве
-    void pushProgress(progress);
+    // Отправляем на сервер, чтобы продолжить просмотр на другом устройстве.
+    // Троттлинг: не чаще раза в 20 секунд на релиз (иначе спамим GitHub-коммитами).
+    const last = lastProgressPushRef.current[progress.itemId] || 0;
+    if (Date.now() - last > 20_000) {
+      lastProgressPushRef.current[progress.itemId] = Date.now();
+      void pushProgress(progress);
+    }
   };
 
   const handleSelectEpisodeInPlayer = (seasonNumber: number, episode: Episode) => {
