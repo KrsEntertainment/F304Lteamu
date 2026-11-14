@@ -43,50 +43,48 @@ import {
 import { AdminGateModal } from './components/AdminGateModal';
 import { AdminPanel } from './components/AdminPanel';
 import { LandingSections, RevealBlock } from './components/LandingSections';
+import { ServerSyncBar } from './components/ServerSyncBar';
+import {
+  POLL_INTERVAL_MS,
+  pullData,
+  pullIfChanged,
+  pullUserState,
+  pushData,
+  pushList,
+  pushProgress,
+  readLocalData,
+  readLocalList,
+  readLocalProgress,
+  writeLocalData,
+  writeLocalList,
+} from './utils/sync';
+import { hasApi } from './utils/api';
 
-const STORAGE_DATA_KEY = 'f304lteam_studio_data_v1';
 const STORAGE_MYLIST_KEY = 'f304lteam_mylist_v1';
-const STORAGE_PROGRESS_KEY = 'f304lteam_progress_v1';
 
 function loadInitialData(): StudioData {
-  try {
-    const raw = localStorage.getItem(STORAGE_DATA_KEY);
-    if (!raw) return INITIAL_STUDIO_DATA;
-    const parsed = JSON.parse(raw) as StudioData;
-    if (Array.isArray(parsed.catalog) && Array.isArray(parsed.actors)) {
-      return {
-        catalog: parsed.catalog,
-        actors: parsed.actors,
-        news: Array.isArray(parsed.news) ? parsed.news : INITIAL_STUDIO_DATA.news,
-        settings: parsed.settings || INITIAL_STUDIO_DATA.settings,
-      };
-    }
-  } catch {
-    // ignore corrupted local storage
+  const parsed = readLocalData();
+  if (parsed && Array.isArray(parsed.catalog) && Array.isArray(parsed.actors)) {
+    return {
+      catalog: parsed.catalog,
+      actors: parsed.actors,
+      news: Array.isArray(parsed.news) ? parsed.news : INITIAL_STUDIO_DATA.news,
+      settings: parsed.settings || INITIAL_STUDIO_DATA.settings,
+    };
   }
   return INITIAL_STUDIO_DATA;
 }
 
 function loadMyList(): string[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_MYLIST_KEY);
-    if (!raw) return ['series-nochnoi-kod'];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+  const list = readLocalList();
+  if (!list.length && !localStorage.getItem(STORAGE_MYLIST_KEY)) {
+    return ['series-nochnoi-kod'];
   }
+  return list;
 }
 
 function loadProgressMap(): Record<string, WatchProgressItem> {
-  try {
-    const raw = localStorage.getItem(STORAGE_PROGRESS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
+  return readLocalProgress();
 }
 
 export default function App() {
@@ -135,30 +133,115 @@ export default function App() {
     toastTimerRef.current = window.setTimeout(() => setToast(null), 3200);
   }, []);
 
-  // Persist StudioData, MyList & WatchProgress automatically
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_DATA_KEY, JSON.stringify(studioData));
-    } catch {
-      // ignore quota warnings since heavy media uses IndexedDB
-    }
-  }, [studioData]);
+  // ---------------------------------------------------------------- синхронизация
+  const [syncOnline, setSyncOnline] = useState(hasApi());
+  const [syncing, setSyncing] = useState(false);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_MYLIST_KEY, JSON.stringify(myList));
-    } catch {
-      // ignore
+  // Данные с сервера имеют приоритет; локальные правки уходят на сервер
+  const applyRemote = useCallback((next: StudioData) => {
+    setStudioData(next);
+  }, []);
+
+  const handleManualRefresh = useCallback(async () => {
+    setSyncing(true);
+    const remote = await pullIfChanged();
+    if (remote) {
+      applyRemote(remote);
+      notify('Данные обновлены с сервера');
+    } else {
+      notify('Изменений на сервере нет');
     }
+    const userState = await pullUserState();
+    if (userState.list) setMyList(userState.list);
+    setSyncing(false);
+  }, [applyRemote, notify]);
+
+  // Первичная загрузка: сервер -> устройство (или выгрузка локальных данных)
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setSyncing(true);
+      const result = await pullData(loadInitialData());
+      if (!alive) return;
+      if (result.data) applyRemote(result.data);
+      setSyncOnline(result.fromServer || hasApi());
+      const userState = await pullUserState();
+      if (!alive) return;
+      if (userState.list) setMyList(userState.list);
+      if (userState.progress) {
+        setProgressMap((prev) => ({ ...userState.progress, ...prev }));
+      }
+      setSyncing(false);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [applyRemote]);
+
+  // Опрос сервера: изменения, сделанные с другого устройства
+  useEffect(() => {
+    if (!hasApi()) return;
+    const tick = async () => {
+      if (document.hidden) return;
+      const remote = await pullIfChanged();
+      if (remote) {
+        applyRemote(remote);
+        notify('Каталог обновлён с другого устройства');
+      }
+    };
+    const id = window.setInterval(tick, POLL_INTERVAL_MS);
+    const onVisible = () => {
+      if (!document.hidden) tick();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [applyRemote, notify]);
+
+  // Пуш контента студии на сервер (только из админки, с токеном)
+  const pushTimerRef = useRef<number | null>(null);
+  const lastPushedRef = useRef<string>('');
+  useEffect(() => {
+    writeLocalData(studioData);
+    const serialized = JSON.stringify(studioData);
+    if (serialized === lastPushedRef.current) return;
+    if (pushTimerRef.current) window.clearTimeout(pushTimerRef.current);
+    pushTimerRef.current = window.setTimeout(async () => {
+      try {
+        const updatedAt = await pushData(studioData);
+        if (updatedAt) {
+          lastPushedRef.current = serialized;
+          setSyncOnline(true);
+        }
+      } catch (err) {
+        setSyncOnline(false);
+        notify(
+          err instanceof Error && err.message.includes('токен')
+            ? 'Админка: нужен токен сервера (Настройки → Синхронизация)'
+            : 'Не удалось сохранить на сервер — данные сохранены локально'
+        );
+      }
+    }, 800);
+    return () => {
+      if (pushTimerRef.current) window.clearTimeout(pushTimerRef.current);
+    };
+  }, [studioData, notify]);
+
+  // «Мой список» синхронизируется между устройствами
+  const listPushSkippedRef = useRef(true);
+  useEffect(() => {
+    writeLocalList(myList);
+    // Первый прогон — это значения, полученные с сервера
+    if (listPushSkippedRef.current) {
+      listPushSkippedRef.current = false;
+      return;
+    }
+    pushList(myList);
   }, [myList]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_PROGRESS_KEY, JSON.stringify(progressMap));
-    } catch {
-      // ignore
-    }
-  }, [progressMap]);
+  // Прогресс просмотра отправляется точечно из handleSaveWatchProgress
 
   // Sticky navbar scroll effect
   useEffect(() => {
@@ -359,6 +442,8 @@ export default function App() {
       ...prev,
       [progress.itemId]: progress,
     }));
+    // Отправляем на сервер, чтобы продолжить просмотр на другом устройстве
+    void pushProgress(progress);
   };
 
   const handleSelectEpisodeInPlayer = (seasonNumber: number, episode: Episode) => {
@@ -1320,6 +1405,12 @@ export default function App() {
         }}
         onClose={() => setAdminPanelOpen(false)}
         onNotify={notify}
+      />
+
+      <ServerSyncBar
+        online={syncOnline}
+        syncing={syncing}
+        onRefresh={handleManualRefresh}
       />
 
       {/* =================================================================== */}
