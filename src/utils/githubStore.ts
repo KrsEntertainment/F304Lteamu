@@ -8,7 +8,10 @@ import { StudioData, WatchProgressItem } from "../types";
 
 const GH_OWNER = "KrsEntertainment";
 const GH_REPO = "F304Lteamu";
-const GH_BRANCH = "arena/f8b646d0-f304lteamu";
+// Ветка с данными: сначала рабочая, затем main (после мержа PR).
+// Реальная ветка определяется при первом обращении к API и кешируется.
+const BRANCH_CANDIDATES = ["arena/f8b646d0-f304lteamu", "main"];
+let resolvedBranch: string | null = null;
 const STATE_PATH = "data/state.json";
 
 const TOKEN_KEY = "f304lteam_gh_token_v1";
@@ -16,9 +19,12 @@ const API_KEY = "f304lteam_gh_backend_v1"; // "github" | "server"
 
 // Публичный URL файла состояния: сначала Pages (там state.json публикуется),
 // затем ветка репозитория — чтобы данные были доступны всегда.
+// raw.githubusercontent отдаёт актуальную версию сразу после записи через API,
+// поэтому он первый; копия на Pages — резерв (и стартовое состояние).
 const RAW_URLS = [
+  `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/main/${STATE_PATH}`,
+  `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${BRANCH_CANDIDATES[0]}/${STATE_PATH}`,
   `https://krsentertainment.github.io/${GH_REPO}/state.json`,
-  `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/${GH_BRANCH}/${STATE_PATH}`,
 ];
 
 export interface GhState {
@@ -134,6 +140,24 @@ async function ghApi(path: string, init: RequestInit = {}) {
  * Записывает новое состояние в репозиторий.
  * mutate получает актуальную версию и возвращает изменённую.
  */
+/** Ветка, в которой реально лежит data/state.json */
+async function resolveBranch(): Promise<string> {
+  if (resolvedBranch) return resolvedBranch;
+  for (const branch of BRANCH_CANDIDATES) {
+    try {
+      const res = await ghApi(`/contents/${STATE_PATH}?ref=${branch}`);
+      if (res.ok) {
+        resolvedBranch = branch;
+        return branch;
+      }
+    } catch {
+      /* следующая ветка */
+    }
+  }
+  resolvedBranch = BRANCH_CANDIDATES[0];
+  return resolvedBranch;
+}
+
 export async function writeGhState(
   mutate: (state: GhState) => GhState,
   reason: string
@@ -142,7 +166,8 @@ export async function writeGhState(
   let current: GhState = EMPTY_STATE;
   let sha: string | undefined;
 
-  const res = await ghApi(`/contents/${STATE_PATH}?ref=${GH_BRANCH}`);
+  const branch = await resolveBranch();
+  const res = await ghApi(`/contents/${STATE_PATH}?ref=${branch}`);
   const file = (await res.json()) as { content: string; sha: string };
   sha = file.sha;
   try {
@@ -163,7 +188,7 @@ export async function writeGhState(
       message: `data: ${reason}`,
       content: encodeBase64Utf8(JSON.stringify(next, null, 2) + "\n"),
       sha,
-      branch: GH_BRANCH,
+      branch,
     }),
   });
 
