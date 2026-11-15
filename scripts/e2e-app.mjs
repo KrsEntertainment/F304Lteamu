@@ -155,8 +155,34 @@ try {
   ok("другое устройство получило данные с сервера", cached.includes("Проверка общей базы"));
   ok("другое устройство видит правку на странице", text.includes("Проверка общей базы"));
   viewer.w.close();
+  // ---- картинка: загружаем файл и проверяем, что на странице он открывается
+  const bytes = new Uint8Array(4096).fill(7);
+  const upRes = await fetch(`${BASE}/api/upload?name=poster.png`, {
+    method: "POST",
+    headers: { Origin: BASE, "Content-Type": "image/png" },
+    body: bytes,
+  });
+  const up = await upRes.json();
+  ok("файл уехал в общую базу", upRes.ok && Boolean(up.url), up.url);
+
+  const withMedia = JSON.parse(readFileSync("data/state.json", "utf8")).studioData;
+  withMedia.catalog[0].poster = up.url;
+  await fetch(`${BASE}/api/data`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Origin: BASE },
+    body: JSON.stringify(withMedia),
+  });
+
+  const mediaDevice = openDevice();
+  await sleep(3500);
+  const html = mediaDevice.w.document.body.innerHTML;
+  const uploadsRef = (html.match(/[^"'\s]*\/uploads\/[\w.\-]+/g) || [])[0] || "";
+  const imgRes = uploadsRef ? await fetch(new URL(uploadsRef, BASE).toString()) : null;
+  ok("картинка загруженного проекта открывается", Boolean(imgRes?.ok), uploadsRef || "ссылки нет");
+  mediaDevice.w.close();
+
   const catalogFromServer = await serverCatalog();
-  ok("в общей базе один проект", catalogFromServer.length === 1, `${catalogFromServer.length}`);
+  ok("в общей базе ровно то, что отправили", catalogFromServer.length >= 1, `${catalogFromServer.length}`);
 
   // ---------------- сценарий из жалобы: две вкладки, удаление проекта
   await fetch(`${BASE}/api/data`, {

@@ -1,11 +1,11 @@
 // Хранилище медиа.
 //
-// Файл уезжает на общий сервер (POST /api/upload) и возвращается как
-// /uploads/<имя> — такую ссылку видят все устройства.
-// Если сервер недоступен, файл временно кладётся в IndexedDB этого браузера
-// (idb://...): правка не теряется и уедет на сервер вместе со следующей
-// успешной отправкой.
-import { api, resolveServerUrl } from "./api";
+// Правило простое: в каталог попадает только «настоящая» ссылка, которая
+// открывается на любом устройстве. Порядок попыток:
+//   1) общий сервер — /uploads/<файл>;
+//   2) публичная папка сайта (ветка gh-pages) — ./uploads/<файл>;
+//   3) если ничего не вышло — честная ошибка, а не битая ссылка в каталоге.
+import { api } from "./api";
 import { hasGithubWrite, uploadMediaToGithub } from "./githubStore";
 
 const DB_NAME = "f304lteam_media_db";
@@ -43,32 +43,9 @@ export function canUploadToServer(): boolean {
   return true;
 }
 
-/**
- * Загружает файл из галереи устройства.
- * Сначала пробует общий сервер; при неудаче сохраняет локально в IndexedDB.
- */
-export async function saveGalleryFile(
-  file: File,
-  onProgress?: UploadProgress
-): Promise<string> {
-  try {
-    const result = await api.uploadFile(file, onProgress);
-    return result.url; // /uploads/<файл> — общий для всех устройств
-  } catch (err) {
-    console.warn("Сервер недоступен, пробую репозиторий:", err);
-  }
-
-  if (hasGithubWrite()) {
-    try {
-      const result = await uploadMediaToGithub(file, onProgress);
-      return result.ref; // сразу доступен по публичной ссылке
-    } catch (err) {
-      console.warn("Репозиторий недоступен, сохраняю локально:", err);
-    }
-  }
-
+/** Локальный кеш файла в этом браузере (не для каталога) */
+async function putToIdb(file: File): Promise<string> {
   const id = `media_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-  const key = `idb://${id}`;
   try {
     const db = await openMediaDB();
     await new Promise<void>((resolve, reject) => {
@@ -77,15 +54,50 @@ export async function saveGalleryFile(
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
-    const objUrl = URL.createObjectURL(file);
-    objectUrlCache.set(key, objUrl);
-    return key;
   } catch {
-    // Fallback: временный ObjectURL (живёт до перезагрузки страницы)
-    const objUrl = URL.createObjectURL(file);
-    objectUrlCache.set(key, objUrl);
-    return objUrl;
+    /* приватный режим — кеша не будет */
   }
+  writePendingUploads([...readPendingUploads(), { id, name: file.name || "file" }]);
+  return `idb://${id}`;
+}
+
+/**
+ * Загружает файл и возвращает ссылку, которую увидят все устройства.
+ * Если загрузить не удалось — бросает ошибку с понятным текстом
+ * (файл при этом остаётся в кеше браузера, чтобы его можно было отправить).
+ */
+export async function saveGalleryFile(
+  file: File,
+  onProgress?: UploadProgress
+): Promise<string> {
+  const errors: string[] = [];
+
+  // 1. Свой сервер
+  try {
+    const result = await api.uploadFile(file, onProgress);
+    return result.url;
+  } catch (err) {
+    errors.push(`сервер: ${(err as Error)?.message || "нет связи"}`);
+  }
+
+  // 2. Публичная папка сайта (ветка gh-pages)
+  if (hasGithubWrite()) {
+    try {
+      const result = await uploadMediaToGithub(file, onProgress);
+      return result.ref;
+    } catch (err) {
+      errors.push(`репозиторий: ${(err as Error)?.message || "нет доступа"}`);
+    }
+  } else {
+    errors.push("репозиторий: нет доступа");
+  }
+
+  // Сохраняем в браузере, чтобы файл не пропал, и говорим правду
+  await putToIdb(file);
+  throw new Error(
+    `Файл остался в этом браузере (${errors.join("; ")}). ` +
+      `В каталог он не записан, чтобы не было битой картинки.`
+  );
 }
 
 /**
@@ -95,7 +107,14 @@ export async function saveGalleryFile(
  */
 export async function resolveMediaUrl(ref?: string): Promise<string> {
   if (!ref) return "";
-  if (!isIdbRef(ref)) return resolveServerUrl(ref);
+  if (!isIdbRef(ref)) {
+    if (/^https?:/i.test(ref)) return ref;
+    // ./uploads/... лежит рядом с сайтом (ветка gh-pages)
+    const relative = ref.replace(/^\.?\//, "");
+    const site = typeof location !== "undefined" ? location.href.split("?")[0] : "";
+    const base = site.endsWith("/") ? site : site.replace(/[^/]*$/, "");
+    return `${base}${relative}`;
+  }
 
   const cached = objectUrlCache.get(ref);
   if (cached) return cached;
@@ -116,6 +135,77 @@ export async function resolveMediaUrl(ref?: string): Promise<string> {
   } catch {
     return "";
   }
+}
+
+// ------------------------------------------ файлы, ждущие отправки наверх
+//
+// Если связи не было, файл лежит в браузере. Как только связь появилась,
+// он уезжает наверх, а ссылка в каталоге заменяется на постоянную.
+
+const PENDING_UPLOAD_KEY = "f304lteam_pending_uploads_v1";
+
+export interface PendingUpload {
+  id: string;
+  name: string;
+}
+
+export function readPendingUploads(): PendingUpload[] {
+  try {
+    const raw = localStorage.getItem(PENDING_UPLOAD_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePendingUploads(list: PendingUpload[]) {
+  try {
+    localStorage.setItem(PENDING_UPLOAD_KEY, JSON.stringify(list));
+  } catch {
+    /* ignore */
+  }
+}
+
+async function getFromIdb(id: string): Promise<Blob | null> {
+  try {
+    const db = await openMediaDB();
+    const blob = await new Promise<Blob | undefined>((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, "readonly");
+      const req = tx.objectStore(STORE_NAME).get(id);
+      req.onsuccess = () => resolve(req.result as Blob | undefined);
+      req.onerror = () => reject(req.error);
+    });
+    return blob ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Досылает всё, что не уехало: возвращает карту «старая ссылка → новая».
+ * Каталог потом подменяет ссылки сам, поэтому картинки оживают.
+ */
+export async function flushPendingUploads(): Promise<Record<string, string>> {
+  const pending = readPendingUploads();
+  if (!pending.length) return {};
+  const replaced: Record<string, string> = {};
+  const left: PendingUpload[] = [];
+
+  for (const entry of pending) {
+    const blob = await getFromIdb(entry.id);
+    if (!blob) continue; // файла больше нет — запись не нужна
+    const file = new File([blob], entry.name || "file", { type: blob.type });
+    try {
+      const result = await api.uploadFile(file);
+      replaced[`idb://${entry.id}`] = result.url;
+    } catch {
+      left.push(entry);
+    }
+  }
+
+  writePendingUploads(left);
+  return replaced;
 }
 
 export async function deleteGalleryFile(ref?: string): Promise<void> {

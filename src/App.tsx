@@ -67,6 +67,7 @@ import {
   writeLocalData,
   writeLocalList,
 } from './utils/sync';
+import { flushPendingUploads } from './utils/mediaStore';
 
 const STORAGE_MYLIST_KEY = 'f304lteam_mylist_v1';
 
@@ -192,6 +193,49 @@ export default function App() {
       alive = false;
     };
   }, [applyRemote]);
+
+  // Досылка файлов, которые не уехали в прошлый раз (нет связи, закрыли вкладку).
+  // После успешной отправки ссылки в каталоге заменяются на постоянные,
+  // поэтому картинки и видео перестают быть битыми.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const replaced = await flushPendingUploads();
+      const keys = Object.keys(replaced);
+      if (!alive || !keys.length) return;
+      setStudioData((prev) => {
+        const fix = (url?: string) => (url && replaced[url] ? replaced[url] : url);
+        return {
+          ...prev,
+          catalog: prev.catalog.map((item) => ({
+            ...item,
+            poster: fix(item.poster) || '',
+            backdrop: fix(item.backdrop) || '',
+            trailerUrl: fix(item.trailerUrl) || '',
+            videoUrl: fix(item.videoUrl) || '',
+            seasons: (item.seasons || []).map((season) => ({
+              ...season,
+              episodes: (season.episodes || []).map((ep) => ({
+                ...ep,
+                thumbnail: fix(ep.thumbnail) || '',
+                videoUrl: fix(ep.videoUrl) || '',
+              })),
+            })),
+          })),
+          actors: prev.actors.map((a) => ({ ...a, photo: fix(a.photo) || '' })),
+          news: prev.news.map((n) => ({
+            ...n,
+            image: fix(n.image) || '',
+            videoUrl: fix(n.videoUrl) || '',
+          })),
+        };
+      });
+      notify('Файлы отправлены в общую базу');
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [notify]);
 
   // Опрос сервера: изменения, сделанные с другого устройства
   useEffect(() => {

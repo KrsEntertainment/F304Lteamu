@@ -19,8 +19,12 @@ export function useMediaUrl(ref?: string): string {
       setResolved('');
       return;
     }
+    // Ссылки на загруженные файлы (/uploads/...) резолвятся через resolveMediaUrl:
+    // так они работают и на своём сервере, и на GitHub Pages в подпапке сайта.
     if (!isIdbRef(ref)) {
-      setResolved(assetUrl(ref));
+      void resolveMediaUrl(ref).then((url) => {
+        if (active) setResolved(url);
+      });
       return;
     }
     resolveMediaUrl(ref).then((url) => {
@@ -101,6 +105,7 @@ export const GalleryFilePicker: React.FC<GalleryFilePickerProps> = ({
   const [uploadPercent, setUploadPercent] = useState<number | null>(null);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [fileMeta, setFileMeta] = useState<string>('');
+  const [error, setError] = useState<string>('');
   const resolvedPreview = useMediaUrl(value);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -108,14 +113,16 @@ export const GalleryFilePicker: React.FC<GalleryFilePickerProps> = ({
     if (!file) return;
     setUploading(true);
     setUploadPercent(0);
+    setError('');
     try {
       const savedRef = await saveGalleryFile(file, setUploadPercent);
       onChange(savedRef);
       const mb = (file.size / (1024 * 1024)).toFixed(1);
-      const where = savedRef.startsWith('/uploads/') || savedRef.includes('/uploads/')
-        ? 'в общее хранилище'
-        : 'локально';
-      setFileMeta(`${file.name} (${mb} МБ) — загружено ${where}`);
+      setFileMeta(`${file.name} (${mb} МБ) — в общей базе, видно на всех устройствах`);
+    } catch (err) {
+      // Каталог не трогаем: битая ссылка хуже, чем честное сообщение
+      setFileMeta('');
+      setError(err instanceof Error ? err.message : 'Не удалось загрузить файл');
     } finally {
       setUploading(false);
       setUploadPercent(null);
@@ -227,12 +234,18 @@ export const GalleryFilePicker: React.FC<GalleryFilePickerProps> = ({
               )}
             </div>
 
+            {error && (
+              <p className="mt-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-[11px] text-amber-200">
+                {error}
+              </p>
+            )}
+
             <p className="text-[11px] text-zinc-400 truncate">
               {fileMeta
                 ? fileMeta
                 : value
                   ? isIdbRef(value)
-                    ? 'Локальное медиа этого браузера (не видно на других устройствах)'
+                    ? 'Файл ждёт отправки: виден только в этом браузере'
                     : value.includes('/uploads/')
                       ? 'В общей базе — видно на всех устройствах'
                       : value

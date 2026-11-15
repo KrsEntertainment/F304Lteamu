@@ -1001,6 +1001,7 @@
         "npm:@types/react@19.2.7",
         "npm:@vitejs/plugin-react@5.1.1",
         "npm:clsx@2.1.1",
+        "npm:deno@^2.9.6",
         "npm:jsdom@^31.0.1",
         "npm:lucide-react@^1.73.0",
         "npm:react-dom@19.2.6",

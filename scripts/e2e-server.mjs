@@ -101,6 +101,38 @@ try {
     `в базе ${afterWrite.data?.catalog?.length} проектов`
   );
 
+  // ---- загрузка медиа: файл должен реально открываться по ссылке
+  const imageBytes = new Uint8Array(200_000);
+  for (let i = 0; i < imageBytes.length; i++) imageBytes[i] = i % 251;
+  const up = await fetch(`${BASE}/api/upload?name=poster.png`, {
+    method: "POST",
+    headers: { Origin: BASE, "Content-Type": "image/png" },
+    body: imageBytes,
+  });
+  const upBody = await up.json().catch(() => null);
+  ok("файл загружается в общую базу", up.ok && Boolean(upBody?.url), upBody?.url || `HTTP ${up.status}`);
+
+  if (upBody?.url) {
+    const dl = await fetch(`${BASE}${upBody.url}`);
+    const got = new Uint8Array(await dl.arrayBuffer());
+    ok("файл открывается по ссылке", dl.ok && got.length === imageBytes.length, `${got.length} байт`);
+    ok(
+      "содержимое не побилось",
+      got.length === imageBytes.length && got[1000] === imageBytes[1000]
+    );
+
+    // ссылку из админки записываем в каталог и проверяем, что она отдаётся
+    const withMedia = payload(["Проект A", "Проект B"]);
+    withMedia.catalog[0].poster = upBody.url;
+    await putData(withMedia);
+    const check = await getData();
+    ok(
+      "постер попал в каталог",
+      check.data?.catalog?.[0]?.poster === upBody.url,
+      check.data?.catalog?.[0]?.poster || "пусто"
+    );
+  }
+
   // удаление проекта — главный сценарий жалобы
   await putData(payload(["Проект A"]));
   ok("удаление проекта сохраняется", (await getData()).data?.catalog?.length === 1);
