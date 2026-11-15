@@ -1,240 +1,51 @@
 {
-  "version": 4,
-  "updatedAt": 1794685377867,
+  "version": 9,
+  "updatedAt": 1794733747648,
   "studioData": {
     "catalog": [
       {
-        "id": "series-gorod-tenei",
+        "id": "series-1794724519005",
         "type": "series",
-        "title": "Город теней",
-        "tagline": "Ночью у мегаполиса другие законы — и свои судьи.",
-        "description": "Криминальная нео-нуарная сага о трёх друзьях детства, оказавшихся по разные стороны закона в портовом мегаполисе. Захватывающие ночные погони, острые диалоги и моральные выборы, в которых невозможно остаться чистым.",
-        "year": 2024,
-        "ageRating": "18+",
-        "rating": 9.1,
-        "duration": "1 сезон • 3 серии",
-        "quality": "4K 60fps",
-        "genres": [
-          "Криминал",
-          "Боевик",
-          "Драма",
-          "Нуар"
-        ],
-        "poster": "/images/poster-gorod-tenei.jpg",
-        "backdrop": "/images/poster-gorod-tenei.jpg",
-        "trailerUrl": "https://videos.pexels.com/video-files/15661481/15661481-hd_1920_1080_24fps.mp4",
-        "videoUrl": "https://videos.pexels.com/video-files/15661481/15661481-hd_1920_1080_24fps.mp4",
-        "director": "Дмитрий Соколов",
-        "published": true,
-        "isFeatured": false,
-        "isNew": false,
-        "isTop": true,
-        "createdAt": "2024-12-03",
-        "cast": [
-          {
-            "actorId": "actor-4",
-            "characterName": "Даниил «Рейд»",
-            "isLead": true
-          },
-          {
-            "actorId": "actor-1",
-            "characterName": "Опер Андрей",
-            "isLead": true
-          },
-          {
-            "actorId": "actor-6",
-            "characterName": "Финансист Костя"
-          }
-        ],
-        "seasons": [
-          {
-            "id": "s1-gt",
-            "number": 1,
-            "title": "Сезон 1: Мокрый асфальт",
-            "episodes": [
-              {
-                "id": "ep-gt-1",
-                "number": 1,
-                "title": "Сделка в доках",
-                "description": "Срыв ночной перевозки запускает войну между двумя кварталами города.",
-                "duration": "44 мин",
-                "thumbnail": "/images/poster-gorod-tenei.jpg",
-                "videoUrl": "https://videos.pexels.com/video-files/15661481/15661481-hd_1920_1080_24fps.mp4"
-              },
-              {
-                "id": "ep-gt-2",
-                "number": 2,
-                "title": "Свой среди чужих",
-                "description": "Андрей получает анонимную наводку и понимает, что целью стал его лучший друг.",
-                "duration": "47 мин",
-                "thumbnail": "/images/hero-nochnoi-kod.jpg",
-                "videoUrl": "https://videos.pexels.com/video-files/20350798/20350798-uhd_3840_2160_50fps.mp4"
-              },
-              {
-                "id": "ep-gt-3",
-                "number": 3,
-                "title": "Рассвет над эстакадой",
-                "description": "Решающая встреча под проливным дождём, после которой город уже не будет прежним.",
-                "duration": "55 мин",
-                "thumbnail": "/images/poster-gorod-tenei.jpg",
-                "videoUrl": "https://videos.pexels.com/video-files/19058578/19058578-hd_1920_1080_24fps.mp4"
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "id": "movie-signal-iz-glubiny",
-        "type": "movie",
-        "title": "Сигнал из глубины",
-        "tagline": "На орбите тишина звучит громче любой тревоги.",
-        "description": "Исследовательский модуль «Авангард-9» теряет связь с Землёй за 14 часов до планового возвращения. Бортинженер Вера расшифровывает странный ритмический импульс с внешнего корпуса — и обнаруживает, что на станции находится незваный пассажир, копирующий голоса экипажа.",
-        "year": 2025,
-        "ageRating": "16+",
-        "rating": 9.2,
-        "duration": "2ч 06м",
-        "quality": "IMAX",
-        "genres": [
-          "Фантастика",
-          "Триллер",
-          "Мистика"
-        ],
-        "poster": "/images/poster-signal-iz-glubiny.jpg",
-        "backdrop": "/images/poster-signal-iz-glubiny.jpg",
-        "trailerUrl": "https://videos.pexels.com/video-files/20350798/20350798-uhd_3840_2160_50fps.mp4",
-        "videoUrl": "https://videos.pexels.com/video-files/20350798/20350798-uhd_3840_2160_50fps.mp4",
-        "director": "Дмитрий Соколов",
-        "published": true,
-        "isFeatured": true,
-        "isNew": true,
-        "isTop": true,
-        "createdAt": "2025-09-15",
-        "cast": [
-          {
-            "actorId": "actor-5",
-            "characterName": "Вера Орлова",
-            "isLead": true
-          },
-          {
-            "actorId": "actor-3",
-            "characterName": "Капитан Белов",
-            "isLead": true
-          },
-          {
-            "actorId": "actor-4",
-            "characterName": "Инженер Павел"
-          }
-        ],
-        "seasons": []
-      },
-      {
-        "id": "series-poslednii-dubl",
-        "type": "series",
-        "title": "Последний дубль",
-        "tagline": "За кулисами великого кино всегда прячется чья-то исповедь.",
-        "description": "Камерная драма о молодой независимой киностудии, которая ставит всё на один рискованный ночной фильм. Бюджет на исходе, плёнка заканчивается, а отношения между режиссёром и главной актрисой перерастают сценарий.",
-        "year": 2025,
-        "ageRating": "16+",
-        "rating": 8.8,
-        "duration": "1 сезон • 2 серии",
+        "title": "Человек пук и человек пучка",
+        "tagline": "Они спасут мир. Или пукнут. Как пойдет",
+        "description": "Город не знает их имен. Пока. Один — супергерой, чья сила в... пуке. Вторая — девушка с пучкой, которая пока не появилась. \nОни хотели спасти мир, но оказались на самом дне. Мусорные пакеты вместо костюмов, насмешки прохожих и полное непонимание того, что делать дальше.\nЭто история о дружбе, предательстве и о том, как начать восхождение, когда ты уже коснулся дна.",
+        "year": 2026,
+        "ageRating": "12+",
+        "rating": 10,
+        "duration": "1 сезон • 1 серий",
         "quality": "4K HDR",
         "genres": [
-          "Драма",
-          "Артхаус"
+          "Триллер"
         ],
-        "poster": "/images/poster-poslednii-dubl.jpg",
-        "backdrop": "/images/poster-poslednii-dubl.jpg",
-        "trailerUrl": "https://videos.pexels.com/video-files/34677880/14698571_1920_1080_25fps.mp4",
-        "videoUrl": "https://videos.pexels.com/video-files/34677880/14698571_1920_1080_25fps.mp4",
-        "director": "Алиса Морозова",
-        "published": true,
-        "isFeatured": false,
-        "isNew": true,
-        "isTop": false,
-        "createdAt": "2025-08-05",
-        "cast": [
-          {
-            "actorId": "actor-3",
-            "characterName": "Режиссёр Виктор",
-            "isLead": true
-          },
-          {
-            "actorId": "actor-2",
-            "characterName": "Актриса Лиза",
-            "isLead": true
-          },
-          {
-            "actorId": "actor-6",
-            "characterName": "Звукорежиссёр Марк"
-          }
-        ],
+        "poster": "./uploads/1794724575210-a2anqm-1000022067.jpg",
+        "backdrop": "./uploads/1794724575210-a2anqm-1000022067.jpg",
+        "trailerUrl": "",
+        "videoUrl": "",
         "seasons": [
           {
-            "id": "s1-pd",
+            "id": "s1-1794724519005",
             "number": 1,
-            "title": "Сезон 1: Павильон №4",
+            "title": "Сезон 1",
             "episodes": [
               {
-                "id": "ep-pd-1",
+                "id": "ep-1794724519005-1",
                 "number": 1,
-                "title": "Мотор! Камера!",
-                "description": "Первый съёмочный день идёт не по плану: исчезает инвестор, но команда решает снимать дальше.",
-                "duration": "42 мин",
-                "thumbnail": "/images/poster-poslednii-dubl.jpg",
-                "videoUrl": "https://videos.pexels.com/video-files/34677880/14698571_1920_1080_25fps.mp4"
-              },
-              {
-                "id": "ep-pd-2",
-                "number": 2,
-                "title": "Свет в конце павильона",
-                "description": "Ночная репетиция финального монолога меняет судьбу фильма и всей команды.",
-                "duration": "46 мин",
-                "thumbnail": "/images/news-backstage.jpg",
-                "videoUrl": "https://videos.pexels.com/video-files/36604690/15520309_1920_1080_25fps.mp4"
+                "title": "Пилотная серия",
+                "description": "",
+                "duration": "45 мин",
+                "thumbnail": "",
+                "videoUrl": ""
               }
             ]
           }
-        ]
-      },
-      {
-        "id": "movie-letnii-dozhd",
-        "type": "movie",
-        "title": "Летний дождь над Невой",
-        "tagline": "Одна белая ночь, чтобы сказать то, на что не хватило пяти лет.",
-        "description": "Тёплая поэтичная драма, снятая на 35-миллиметровую плёнку в предрассветных сумерках Петербурга. Двое бывших однокурсников случайно встречаются на разведённом мосту и проводят последнюю ночь лета, вспоминая несбывшиеся мечты о кино.",
-        "year": 2024,
-        "ageRating": "12+",
-        "rating": 8.7,
-        "duration": "1ч 38м",
-        "quality": "Full HD",
-        "genres": [
-          "Драма",
-          "Мелодрама",
-          "Артхаус"
         ],
-        "poster": "/images/poster-letnii-dozhd.jpg",
-        "backdrop": "/images/poster-letnii-dozhd.jpg",
-        "trailerUrl": "https://videos.pexels.com/video-files/855433/855433-hd_1864_1048_25fps.mp4",
-        "videoUrl": "https://videos.pexels.com/video-files/855433/855433-hd_1864_1048_25fps.mp4",
-        "director": "Алиса Морозова",
+        "cast": [],
+        "director": "F304Lteam",
         "published": true,
         "isFeatured": false,
-        "isNew": false,
-        "isTop": false,
-        "createdAt": "2024-07-18",
-        "cast": [
-          {
-            "actorId": "actor-5",
-            "characterName": "София",
-            "isLead": true
-          },
-          {
-            "actorId": "actor-1",
-            "characterName": "Роман",
-            "isLead": true
-          }
-        ],
-        "seasons": []
+        "isNew": true,
+        "isTop": true,
+        "createdAt": "2026-11-15"
       }
     ],
     "actors": [
